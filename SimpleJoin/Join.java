@@ -9,12 +9,12 @@ import org.apache.hadoop.mapred.lib.MultipleInputs;
 import org.apache.hadoop.util.*;
 
 public class Join extends Configured implements Tool {
-	
-	public static class OuterMapper extends MapReduceBase implements Mapper<LongWritable, Text, TextPair, TextPair> {
+    
+    public static class OuterMapper extends MapReduceBase implements Mapper<LongWritable, Text, TextPair, TextPair> {
         private static int joinCol;
         
-		public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output, Reporter reporter) throws IOException {
-			String[] tuple = value.toString().split(" ");
+        public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output, Reporter reporter) throws IOException {
+            String[] tuple = value.toString().split(" ");
             StringBuffer attrs = new StringBuffer();
             for (int i = 0; i < tuple.length; i++) {
                 if (i != joinCol) {
@@ -26,19 +26,19 @@ public class Join extends Configured implements Tool {
                 attrs.deleteCharAt(attrs.length()-1);
             }
             
-			output.collect(new TextPair(tuple[joinCol], "0"), new TextPair(attrs.toString(), "0"));
-		}
+            output.collect(new TextPair(tuple[joinCol], "0"), new TextPair(attrs.toString(), "0"));
+        }
                 
         public void configure(JobConf conf) {
             joinCol = conf.getInt("OuterJoinColumn", 0);
         }
-	}
- 	
-	public static class InnerMapper extends MapReduceBase implements Mapper<LongWritable, Text, TextPair, TextPair> {
+    }
+    
+    public static class InnerMapper extends MapReduceBase implements Mapper<LongWritable, Text, TextPair, TextPair> {
         private static int joinCol;
     
-		public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output, Reporter reporter) throws IOException {
-			String[] tuple = value.toString().split(" ");
+        public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output, Reporter reporter) throws IOException {
+            String[] tuple = value.toString().split(" ");
             StringBuffer attrs = new StringBuffer();
             for (int i = 0; i < tuple.length; i++) {
                 if (i != joinCol) {
@@ -50,13 +50,13 @@ public class Join extends Configured implements Tool {
                 attrs.deleteCharAt(attrs.length()-1);
             }
             
-			output.collect(new TextPair(tuple[joinCol], "1"), new TextPair(attrs.toString(), "1"));
-		}
+            output.collect(new TextPair(tuple[joinCol], "1"), new TextPair(attrs.toString(), "1"));
+        }
         
         public void configure(JobConf conf) {
             joinCol = conf.getInt("InnerJoinColumn", 0);
         }
-	}
+    }
         
     public static class KeyPartitioner implements Partitioner <TextPair, TextPair> {
         @Override
@@ -68,8 +68,8 @@ public class Join extends Configured implements Tool {
         public void configure(JobConf conf) {}
     }
 
-	public static class JoinReducer extends MapReduceBase implements Reducer<TextPair, TextPair, Text, Text> {
-		public void reduce(TextPair key, Iterator<TextPair> values, OutputCollector<Text, Text> output, Reporter reporter) throws IOException {
+    public static class JoinReducer extends MapReduceBase implements Reducer<TextPair, TextPair, Text, Text> {
+        public void reduce(TextPair key, Iterator<TextPair> values, OutputCollector<Text, Text> output, Reporter reporter) throws IOException {
             ArrayList<String> buffer = new ArrayList<String>();
             Text tag = key.getSecond();
             TextPair value = null;
@@ -96,33 +96,33 @@ public class Join extends Configured implements Tool {
                 }
             } 
             //System.out.println("----------");
-		}
-	}
- 	
-	public int run(String[] args) throws Exception {
-		if (args.length != 5) {
-			System.out.println("USAGE: <prog name> <R input> <R joincol> <S input> <S joincol> <output>");
-			return -1;
-		}
+        }
+    }
+    
+    public int run(String[] args) throws Exception {
+        if (args.length != 5) {
+            System.out.println("USAGE: <prog name> <R input> <R joincol> <S input> <S joincol> <output>");
+            return -1;
+        }
 
-		JobConf conf = new JobConf(getConf(), getClass());
+        JobConf conf = new JobConf(getConf(), getClass());
 
         //conf.set("mapred.job.tracker", "local");
         //conf.set("fs.default.name", "local");
         
         // Mapper classes & Input files
-		MultipleInputs.addInputPath(conf, new Path(args[0]), TextInputFormat.class, OuterMapper.class);
-		MultipleInputs.addInputPath(conf, new Path(args[2]), TextInputFormat.class, InnerMapper.class);
-		
+        MultipleInputs.addInputPath(conf, new Path(args[0]), TextInputFormat.class, OuterMapper.class);
+        MultipleInputs.addInputPath(conf, new Path(args[2]), TextInputFormat.class, InnerMapper.class);
+        
         // Output path
         FileOutputFormat.setOutputPath(conf, new Path(args[4]));
 
         // Mapper output class
         conf.setMapOutputKeyClass(TextPair.class);
-		conf.setMapOutputValueClass(TextPair.class);
+        conf.setMapOutputValueClass(TextPair.class);
         
         // Mapper Value Grouping
-		conf.setOutputValueGroupingComparator(TextPair.FirstComparator.class);
+        conf.setOutputValueGroupingComparator(TextPair.FirstComparator.class);
 
         // Partitioner
         conf.setPartitionerClass(KeyPartitioner.class);
@@ -138,12 +138,12 @@ public class Join extends Configured implements Tool {
         conf.setInt("InnerJoinColumn", Integer.parseInt(args[3]));
 
         // Run job
-		JobClient.runJob(conf);
-		return 0;
-	}
-	
-	public static void main(String[] args) throws Exception {
-	    int res = ToolRunner.run(new Configuration(), new Join(), args);
-	    System.exit(res);
-	 }
-}	
+        JobClient.runJob(conf);
+        return 0;
+    }
+    
+    public static void main(String[] args) throws Exception {
+        int res = ToolRunner.run(new Configuration(), new Join(), args);
+        System.exit(res);
+     }
+}
