@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import operators.join.SimpleJoin.ReduceSideJoin;
 import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
 
