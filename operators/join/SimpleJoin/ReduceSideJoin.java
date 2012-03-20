@@ -1,6 +1,10 @@
+package operators.join.SimpleJoin;
+
 import java.io.IOException;
 import java.util.*;
 
+import operators.join.TextPair;
+import operators.join.TextPair.FirstComparator;
 import operators.selection.SelectionFilter;
 
 import org.apache.hadoop.fs.Path;
@@ -19,8 +23,8 @@ public class ReduceSideJoin extends Configured implements Tool {
 	 * mem in the reduce phase
 	 * 
 	 */
-	protected static final String PREFIX_JOIN_SMALLER = "smaller_";
-	protected static final String PREFIX_JOIN_LARGER = "larger_";
+	public static final String PREFIX_JOIN_SMALLER = "smaller_";
+	public static final String PREFIX_JOIN_LARGER = "larger_";
 
 	protected static final String COLUMN_SEPARATOR_RE = "\\|";
 	protected static final String COLUMN_SEPARATOR = "|";
@@ -69,8 +73,8 @@ public class ReduceSideJoin extends Configured implements Tool {
 			StringBuffer attrs = new StringBuffer();
 			for (int i = 0; i < tuple.length; i++) {
 				// TODO: for this is simplier and in general it's ok to leave it
-				// like this. 
-				//if (i != joinCol) {
+				// like this.
+				// if (i != joinCol) {
 				attrs.append(tuple[i] + COLUMN_SEPARATOR);
 				// }
 			}
