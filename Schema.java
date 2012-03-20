@@ -119,8 +119,7 @@ class Schema {
      * tuple. */
     public Text rowJoin( Text row1, Text row2 ){
 	Text result = new Text( row1 );
-	byte[] sep = new byte[1];
-	sep[0] = '|';
+	byte[] sep = {'|'};
 	result.append( sep, 0, 1 );
 	result.append( row2.getBytes(), 0, row2.getLength() );
 	return result;
