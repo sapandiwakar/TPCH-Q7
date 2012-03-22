@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 import operators.join.TextPair;
+import operators.selection.DateSelectionFilter;
 import operators.selection.SelectionFilter;
 
 import org.apache.hadoop.fs.Path;
@@ -29,7 +30,6 @@ public class ReduceSideJoin extends Configured {
 
   public static final String PARAM_LARGER_NAME = "larger_name";
   public static final String PARAM_SMALLER_NAME = "smaller_name";
-  public static final String PARAM_DATEFILTER_PREFIX = "date_filter_column_index_";
 
   protected static final String COLUMN_SEPARATOR_RE = "\\|";
   protected static final String COLUMN_SEPARATOR = "|";
@@ -39,7 +39,7 @@ public class ReduceSideJoin extends Configured {
 
   public static class OuterMapper extends ReduceSideJoinAbstractMapper {
     public void configure(JobConf conf) {
-      super.configure(conf, conf.get(PARAM_SMALLER_NAME, ""));
+      super.configureDateSelection(conf, conf.get(PARAM_SMALLER_NAME, ""));
 
       reduceOrder = "0";
       joinCol = conf.getInt("OuterJoinColumn", 0);
@@ -50,7 +50,7 @@ public class ReduceSideJoin extends Configured {
   public static class InnerMapper extends ReduceSideJoinAbstractMapper {
     public void configure(JobConf conf) {
 
-      super.configure(conf, conf.get(PARAM_LARGER_NAME, ""));
+      super.configureDateSelection(conf, conf.get(PARAM_LARGER_NAME, ""));
 
       reduceOrder = "1";
       joinCol = conf.getInt("InnerJoinColumn", 0);
@@ -68,37 +68,12 @@ public class ReduceSideJoin extends Configured {
 
     // TODO: add projection
     protected static SelectionFilter selectionFilter;
-    private SimpleDateFormat date_format;
-    private Date date1;
-    private Date date2;
+    protected static DateSelectionFilter dateSelectionFilter = null;
 
-    // TODO:
-    private int date_filter_column_index = -1;
 
-    public void configure(JobConf conf, String relation_name) {
-
-      String date_filter_param = conf.get(PARAM_DATEFILTER_PREFIX + relation_name, "");
-
-      // TODO: date filter is hard-coded for now. It is activated if
-      // date_filter_column_index setting is set
-      if (date_filter_param != "") {
-        date_filter_column_index = Integer.parseInt(date_filter_param);
-        System.out.println("date_filter_column_index for " + relation_name + ":"
-            + date_filter_column_index);
-
-        date_format = new SimpleDateFormat("yyyy-MM-dd");
-
-        try {
-          date1 = date_format.parse("1995-01-01");
-          date2 = date_format.parse("1996-12-31");
-
-        } catch (ParseException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-
-    };
+    public void configureDateSelection(JobConf conf, String relation_name) {
+      dateSelectionFilter = new DateSelectionFilter(conf, relation_name);
+    }
 
     public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output,
         Reporter reporter) throws IOException {
@@ -110,21 +85,8 @@ public class ReduceSideJoin extends Configured {
       if (!selectionFilter.checkSelection(tuple))
         return;
 
-      // TODO: hard coded date filter
-      if (date_filter_column_index >= 0) {
-
-        try {
-          Date date;
-          date = date_format.parse(tuple[date_filter_column_index]);
-          if (!(date1.compareTo(date) < 0 && date2.compareTo(date) > 0)) {
-            return;
-          }
-        } catch (ParseException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-
-      }
+      if (dateSelectionFilter != null && !dateSelectionFilter.checkSelection(tuple))
+        return;
 
       // if (DEBUG) System.out.println("sel ok: " + value);
 
@@ -182,6 +144,8 @@ public class ReduceSideJoin extends Configured {
           buffer.add(value.getFirst().toString());
         } else {
           bAttrs = value.getFirst().toString();
+          // TODO: something too complex is being done
+
           for (String val : buffer) {
             if ("".compareTo(val) != 0 && "".compareTo(bAttrs) != 0) {
               attrs = val + COLUMN_SEPARATOR + bAttrs;

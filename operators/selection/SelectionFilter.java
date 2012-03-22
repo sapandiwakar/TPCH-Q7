@@ -1,7 +1,10 @@
 package operators.selection;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import org.apache.hadoop.mapred.JobConf;
 
@@ -9,7 +12,7 @@ import relations.Schema;
 
 import java.util.Map.Entry;
 
-public class SelectionFilter {
+public class SelectionFilter implements SelectionFilterInterface {
 
 	private static final String CONF_KEY_NCOLS = "selection_NCols";
 	private static final String CONF_KEY_VALUES = "selection_values";
@@ -18,6 +21,7 @@ public class SelectionFilter {
 	ArrayList<SelectionEntry<Integer>> selectionArguments;
 
 	String filterType = "OR";
+
 
 	// TODO: we need relation name too!!!
 
@@ -48,6 +52,9 @@ public class SelectionFilter {
 		}
 		return false || selectionArguments.size() == 0;
 	}
+	
+
+	
 
 	/**
 	 * Constructor given Configuration. as join have multiple relations we add
@@ -72,6 +79,7 @@ public class SelectionFilter {
 		}
 	}
 
+	// TODO: shall use relation name instead
 	public static void addSelectionsToJob(JobConf conf, String relationPrefix,
             List<SelectionEntry<String>> nationFilters, Schema schema) {
 		conf.setInt(relationPrefix + CONF_KEY_NCOLS, nationFilters.size());
