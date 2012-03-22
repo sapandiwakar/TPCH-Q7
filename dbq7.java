@@ -1,5 +1,8 @@
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import operators.join.SimpleJoin.ReduceSideJoin;
 import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
@@ -54,6 +57,12 @@ public class dbq7 {
 	}
 
 	public static JobControl buildJobs() throws IOException {
+                // ======
+                // Params
+                String nation1 = "FRANCE";
+                String nation2 = "GERMANY";
+                // ======
+	
 		JobControl jbcntrl = new JobControl("jbcntrl");
 
 		// ======
@@ -61,22 +70,28 @@ public class dbq7 {
 		// =========
 		// TODO: this still will have to know about selections and projections
 
-		JobConf job_n1_suppliers_conf = ReduceSideJoin.getConf(relSupplier, relNations, "NATIONKEY", relImdN1Supplier);
+		JobConf job_n1_suppliers_conf =
+                    ReduceSideJoin.getConf(relSupplier, relNations, "NATIONKEY", relImdN1Supplier);
 		// add selection: TODO: for now default selection type is OR
-		ArrayList<SelectionEntry<String>> nationFilters = new ArrayList<SelectionEntry<String>>();
+		@SuppressWarnings("unchecked")
+		List<SelectionEntry<String>> nationFilters = Arrays.asList(
+				new SelectionEntry<String>("NAME", nation1),
+				new SelectionEntry<String>("NAME", nation2));
 
-		nationFilters.add(new SelectionEntry<String>("NAME", "FRANCE"));
-		nationFilters.add(new SelectionEntry<String>("NAME", "GERMANY"));
-
-		SelectionFilter.addSelectionsToJob(job_n1_suppliers_conf, ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
+		SelectionFilter.addSelectionsToJob(job_n1_suppliers_conf,
+				ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
 
 		ControlledJob job_n1_suppliers = new ControlledJob(job_n1_suppliers_conf);
 		job_n1_suppliers.setJobName("job_n1_suppliers");
 		jbcntrl.addJob(job_n1_suppliers);
 
-		System.out.println("Join schema:" + schemaMgrN1Supplier.toString() + " ind of SUPPKEY=" + schemaMgrN1Supplier.columnIndex("SUPPKEY"));
+		
+		
+		System.out.println("Join schema:" + schemaMgrN1Supplier.toString() +
+				" ind of SUPPKEY=" + schemaMgrN1Supplier.columnIndex("SUPPKEY"));
 		// map-side join LineItem with o(n1) |><| supplier
-		JobConf job_n1_suppliers_lineitem_conf = ReduceSideJoin.getConf(relLineItem, relImdN1Supplier, "SUPPKEY", relImdN1SupplierLineItem);
+		JobConf job_n1_suppliers_lineitem_conf =
+				ReduceSideJoin.getConf(relLineItem, relImdN1Supplier, "SUPPKEY", relImdN1SupplierLineItem);
 		ControlledJob job_n1_suppliers_lineitem = new ControlledJob(job_n1_suppliers_lineitem_conf);
 
 		// set job dependencies

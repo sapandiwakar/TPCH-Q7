@@ -15,12 +15,16 @@ import org.apache.hadoop.io.Text;
 public class Schema {
 	// Constants
 
-	public static ArrayList<String> NATIONS_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" }));
+	public static ArrayList<String> NATIONS_FIELDS =
+            new ArrayList<String>(Arrays.asList(new String[] { "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" }));
 
-	public static ArrayList<String> SUPPLIER_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+	public static ArrayList<String> SUPPLIER_FIELDS =
+            new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
 			"ACCTBAL", "COMMENT" }));
 
-	public static ArrayList<String> CUSTOMER_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+	public static ArrayList<String> CUSTOMER_FIELDS =
+            new ArrayList<String>(Arrays.asList(new String[] {
+                "CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
 			"ACCTBAL", "MKTSEGMENT", "COMMENT" }));
 
 	/*
@@ -35,6 +39,10 @@ public class Schema {
 	 * *
 	 * TODO : add other fields ! ! !
 	 */}));
+        
+        public static List<String> ORDERS_FIELDS = Arrays.asList( "ORDERKEY",
+            "CUSTKEY", "ORDERSTATUS", "TOTALPRICE", "ORDERDATE", "ORDERPRIORITY",
+            "CLERK", "SHIPPRIORITY", "COMMENT");
 
 	/**
 	 * Create a schema from a list of column names.
@@ -78,12 +86,12 @@ public class Schema {
 	}
 
 	/** Get the index of a column by column name. */
-	public int columnIndex(String col) {
+	public int getColumnIndex(String col) {
 		return _schema.indexOf(col);
 	}
 
 	/** Convenience function: get a sorted list of column indices. */
-	public List<Integer> columnIndices(List<String> colNames) {
+	public List<Integer> getColumnIndices(List<String> colNames) {
 		ArrayList<Integer> result = new ArrayList<Integer>(colNames.size());
 		for (String col : colNames)
 			result.add(columnIndex(col));

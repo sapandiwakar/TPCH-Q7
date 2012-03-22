@@ -72,16 +72,17 @@ public class SelectionFilter {
 		}
 	}
 
-	public static void addSelectionsToJob(JobConf conf, String relationPrefix, ArrayList<SelectionEntry<String>> selectionArgs, Schema schema) {
-		conf.setInt(relationPrefix + CONF_KEY_NCOLS, selectionArgs.size());
+	public static void addSelectionsToJob(JobConf conf, String relationPrefix,
+            List<SelectionEntry<String>> nationFilters, Schema schema) {
+		conf.setInt(relationPrefix + CONF_KEY_NCOLS, nationFilters.size());
 
-		System.out.println("SelectionFilterCreate n=" + selectionArgs.size());
+		System.out.println("SelectionFilterCreate n=" + nationFilters.size());
 
 		// using schema convert column names into their indexes
 		List<String> columnIndexes = new ArrayList<String>();
 		List<String> values = new ArrayList<String>();
 
-		for (SelectionEntry<String> entry : selectionArgs) {
+		for (SelectionEntry<String> entry : nationFilters) {
 			columnIndexes.add(schema.columnIndex(entry.getKey()) + "");
 			values.add(entry.getValue());
 
