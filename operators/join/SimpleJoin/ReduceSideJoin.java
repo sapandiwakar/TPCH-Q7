@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.*;
 
 import operators.join.TextPair;
-import operators.join.TextPair.FirstComparator;
 import operators.selection.SelectionFilter;
 
 import org.apache.hadoop.fs.Path;

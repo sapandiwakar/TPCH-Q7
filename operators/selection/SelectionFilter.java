@@ -2,9 +2,7 @@ package operators.selection;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.apache.hadoop.mapred.JobConf;
 
 import relations.Schema;

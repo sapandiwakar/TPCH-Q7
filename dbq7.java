@@ -1,22 +1,15 @@
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
-
 import operators.join.SimpleJoin.ReduceSideJoin;
 import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
 
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
 import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 
 import relations.Relation;
 import relations.Schema;
-import sun.rmi.log.ReliableLog;
 
 public class dbq7 {
 
@@ -72,8 +65,8 @@ public class dbq7 {
 		// add selection: TODO: for now default selection type is OR
 		ArrayList<SelectionEntry<String>> nationFilters = new ArrayList<SelectionEntry<String>>();
 
-		nationFilters.add(new SelectionEntry("NAME", "FRANCE"));
-		nationFilters.add(new SelectionEntry("NAME", "GERMANY"));
+		nationFilters.add(new SelectionEntry<String>("NAME", "FRANCE"));
+		nationFilters.add(new SelectionEntry<String>("NAME", "GERMANY"));
 
 		SelectionFilter.addSelectionsToJob(job_n1_suppliers_conf, ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
 
