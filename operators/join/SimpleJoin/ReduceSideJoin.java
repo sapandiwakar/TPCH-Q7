@@ -17,7 +17,7 @@ import org.apache.hadoop.util.*;
 
 import relations.Relation;
 
-public class ReduceSideJoin extends Configured implements Tool {
+public class ReduceSideJoin extends Configured {
 
   /**
    * Outer is the smaller relation, i.e. it's values per key are copied into mem
@@ -79,13 +79,12 @@ public class ReduceSideJoin extends Configured implements Tool {
 
       String date_filter_param = conf.get(PARAM_DATEFILTER_PREFIX + relation_name, "");
 
-      System.out.println("date_filter_column_index for " + relation_name + ":"
-          + date_filter_column_index);
-
       // TODO: date filter is hard-coded for now. It is activated if
       // date_filter_column_index setting is set
       if (date_filter_param != "") {
         date_filter_column_index = Integer.parseInt(date_filter_param);
+        System.out.println("date_filter_column_index for " + relation_name + ":"
+            + date_filter_column_index);
 
         date_format = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -117,7 +116,7 @@ public class ReduceSideJoin extends Configured implements Tool {
         try {
           Date date;
           date = date_format.parse(tuple[date_filter_column_index]);
-          if (!(date1.compareTo(date) > 0 && date2.compareTo(date) < 0)) {
+          if (!(date1.compareTo(date) < 0 && date2.compareTo(date) > 0)) {
             return;
           }
         } catch (ParseException e) {
@@ -189,36 +188,16 @@ public class ReduceSideJoin extends Configured implements Tool {
             } else {
               attrs = val + bAttrs;
             }
+
             // if (DEBUG) System.out.println("reduce out:" + key.getFirst() +
             // "-->" + attrs);
+
             output.collect(key.getFirst(), new Text(attrs));
           }
         }
       }
       // System.out.println("----------");
     }
-  }
-
-  public int run(String[] args) throws Exception {
-    if (args.length != 5) {
-      System.out.println("USAGE: <prog name> <R input> <R joincol> <S input> <S joincol> <output>");
-      return -1;
-    }
-
-    String inInnerRelation = args[2];
-    String inOuterRelation = args[0];
-
-    int innerJoinCol = Integer.parseInt(args[3]);
-    int outerJoinCol = Integer.parseInt(args[1]);
-
-    String output = args[4];
-
-    JobConf conf = getJoinConf(getConf(), inInnerRelation, innerJoinCol, inOuterRelation,
-        outerJoinCol, output);
-
-    // Run job
-    JobClient.runJob(conf);
-    return 0;
   }
 
   /**
@@ -236,8 +215,8 @@ public class ReduceSideJoin extends Configured implements Tool {
       String smallerJoinCol, Relation outRelation) {
 
     JobConf conf = ReduceSideJoin.getJoinConf(new Configuration(), larger.storageFileName,
-        larger.schema.columnIndex(largerJoinCol), smaller.storageFileName,
-        smaller.schema.columnIndex(smallerJoinCol), outRelation.storageFileName);
+        larger.schema.getColumnIndex(largerJoinCol), smaller.storageFileName,
+        smaller.schema.getColumnIndex(smallerJoinCol), outRelation.storageFileName);
 
     conf.set(PARAM_SMALLER_NAME, smaller.name);
     conf.set(PARAM_LARGER_NAME, larger.name);
@@ -275,8 +254,6 @@ public class ReduceSideJoin extends Configured implements Tool {
 
     if (IS_LOCAL) {
       conf.set("mapred.job.tracker", "local");
-      // conf.set("fs.default.name", "local");
-
       conf.set("fs.default.name", "file:///");
     }
 
@@ -317,8 +294,4 @@ public class ReduceSideJoin extends Configured implements Tool {
     return conf;
   }
 
-  public static void main(String[] args) throws Exception {
-    int res = ToolRunner.run(new Configuration(), new ReduceSideJoin(), args);
-    System.exit(res);
-  }
 }

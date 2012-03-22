@@ -15,12 +15,16 @@ import org.apache.hadoop.io.Text;
 public class Schema {
 	// Constants
 
-	public static ArrayList<String> NATIONS_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" }));
+	public static ArrayList<String> NATIONS_FIELDS =
+            new ArrayList<String>(Arrays.asList(new String[] { "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" }));
 
-	public static ArrayList<String> SUPPLIER_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+	public static ArrayList<String> SUPPLIER_FIELDS =
+            new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
 			"ACCTBAL", "COMMENT" }));
 
-	public static ArrayList<String> CUSTOMER_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+	public static ArrayList<String> CUSTOMER_FIELDS =
+            new ArrayList<String>(Arrays.asList(new String[] {
+                "CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
 			"ACCTBAL", "MKTSEGMENT", "COMMENT" }));
 
 	/*
@@ -35,6 +39,10 @@ public class Schema {
 	 * *
 	 * TODO : add other fields ! ! !
 	 */}));
+        
+        public static List<String> ORDERS_FIELDS = Arrays.asList( "ORDERKEY",
+            "CUSTKEY", "ORDERSTATUS", "TOTALPRICE", "ORDERDATE", "ORDERPRIORITY",
+            "CLERK", "SHIPPRIORITY", "COMMENT");
 
 	/**
 	 * Create a schema from a list of column names.
@@ -78,15 +86,15 @@ public class Schema {
 	}
 
 	/** Get the index of a column by column name. */
-	public int columnIndex(String col) {
+	public int getColumnIndex(String col) {
 		return _schema.indexOf(col);
 	}
 
 	/** Convenience function: get a sorted list of column indices. */
-	public List<Integer> columnIndices(List<String> colNames) {
+	public List<Integer> getColumnIndices(List<String> colNames) {
 		ArrayList<Integer> result = new ArrayList<Integer>(colNames.size());
 		for (String col : colNames)
-			result.add(columnIndex(col));
+			result.add(getColumnIndex(col));
 		Collections.sort(result);
 		return result;
 	}
@@ -182,24 +190,9 @@ public class Schema {
 
 	// unit test
 	public static void main(String[] args) throws Exception {
-		List<String> names123 = new ArrayList<String>() {
-			{
-				add("col1");
-				add("col2");
-				add("col3");
-			}
-		};
-		List<String> names2 = new ArrayList<String>() {
-			{
-				add("col2");
-			}
-		};
-		List<String> names13 = new ArrayList<String>() {
-			{
-				add("col1");
-				add("col3");
-			}
-		};
+		List<String> names123 = Arrays.asList( "col1", "col2", "col3" );
+		List<String> names2 = Arrays.asList( "col2" );
+		List<String> names13 = Arrays.asList( "col1", "col3" );
 		List<String> names12313 = new ArrayList<String>(names123);
 		names12313.addAll(names13);
 
@@ -207,15 +200,15 @@ public class Schema {
 		Schema schema13 = new Schema(names13);
 
 		Text row = new Text("data1|data2|data3");
-		assert (schema.getValue(row, schema.columnIndex("col1")) == new Text("data1"));
-		assert (schema.getValue(row, schema.columnIndex("col3")) == new Text("data3"));
+		assert (schema.getValue(row, schema.getColumnIndex("col1")) == new Text("data1"));
+		assert (schema.getValue(row, schema.getColumnIndex("col3")) == new Text("data3"));
 
-		List<Integer> indices = schema.columnIndices(names2);
+		List<Integer> indices = schema.getColumnIndices(names2);
 		assert (schema.rowProjection(row, indices) == new Text("data2"));
 
 		List<String> names31 = names13;
 		Collections.reverse(names31);
-		indices = schema.columnIndices(names31);
+		indices = schema.getColumnIndices(names31);
 		assert (schema.rowProjection(row, indices) == new Text("data1|data3"));
 
 		assert (schema.projection(indices) == schema13);

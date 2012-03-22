@@ -1,1 +1,4 @@
 *.class
+.metadata
+project.kdev4
+/bin

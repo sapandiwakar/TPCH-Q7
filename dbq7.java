@@ -1,8 +1,6 @@
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-
+import java.util.Arrays;
+import java.util.List;
 import operators.join.SimpleJoin.ReduceSideJoin;
 import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
@@ -61,6 +59,12 @@ public class dbq7 {
   }
 
   public static JobControl buildJobs() throws IOException {
+    // ======
+    // Params
+    String nation1 = "FRANCE";
+    String nation2 = "GERMANY";
+    // ======
+
     JobControl jbcntrl = new JobControl("jbcntrl");
 
     // ======
@@ -71,31 +75,33 @@ public class dbq7 {
     JobConf job_n1_suppliers_conf = ReduceSideJoin.getConf(relSupplier, relNations, "NATIONKEY",
         relImdN1Supplier);
     // add selection: TODO: for now default selection type is OR
-    ArrayList<SelectionEntry<String>> nationFilters = new ArrayList<SelectionEntry<String>>();
-
-    nationFilters.add(new SelectionEntry<String>("NAME", "FRANCE"));
-    nationFilters.add(new SelectionEntry<String>("NAME", "GERMANY"));
+    @SuppressWarnings("unchecked")
+    List<SelectionEntry<String>> nationFilters = Arrays.asList(new SelectionEntry<String>("NAME",
+        nation1), new SelectionEntry<String>("NAME", nation2));
 
     SelectionFilter.addSelectionsToJob(job_n1_suppliers_conf, ReduceSideJoin.PREFIX_JOIN_SMALLER,
         nationFilters, relNations.schema);
-
-    // enable the date filter by providing column index. TODO: clean up
-    job_n1_suppliers_conf.set(ReduceSideJoin.PARAM_DATEFILTER_PREFIX + relLineItem.name,
-        relLineItem.schema.columnIndex("SHIPDATE") + "");
 
     ControlledJob job_n1_suppliers = new ControlledJob(job_n1_suppliers_conf);
     job_n1_suppliers.setJobName("job_n1_suppliers");
     jbcntrl.addJob(job_n1_suppliers);
 
     System.out.println("Join schema:" + schemaMgrN1Supplier.toString() + " ind of SUPPKEY="
-        + schemaMgrN1Supplier.columnIndex("SUPPKEY"));
+        + schemaMgrN1Supplier.getColumnIndex("SUPPKEY"));
 
     // ===============================================
     // map-side join LineItem with [o(n1) |><| supplier]
     // ==================================================
     JobConf job_n1_suppliers_lineitem_conf = ReduceSideJoin.getConf(relLineItem, relImdN1Supplier,
         "SUPPKEY", relImdN1SupplierLineItem);
+    
+    // enable the date filter by providing column index. TODO: clean up
+    job_n1_suppliers_lineitem_conf.set(ReduceSideJoin.PARAM_DATEFILTER_PREFIX + relLineItem.name,
+        relLineItem.schema.getColumnIndex("SHIPDATE") + "");
+    
     ControlledJob job_n1_suppliers_lineitem = new ControlledJob(job_n1_suppliers_lineitem_conf);
+
+
 
     // set job dependencies
     job_n1_suppliers_lineitem.addDependingJob(job_n1_suppliers);
