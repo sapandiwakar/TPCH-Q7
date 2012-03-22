@@ -27,7 +27,7 @@ public class Schema {
 	 * TODO: field order may be wrong?? Don't fit schema from pdf, but dont join
 	 * otherwise
 	 */
-	public static ArrayList<String> LINEITEM_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "ORDERKEY", "PARTKEY", "LINENUMBER",
+	public static ArrayList<String> LINEITEM_FIELDS = new ArrayList<String>(Arrays.asList(new String[] {"ORDERKEY", "PARTKEY", "SUPPKEY", "LINENUMBER",
 			"QUANTITY", "EXTENDEDPRICE", "DISCOUNT", "TAX", "RETURNFLAG", "LINESTATUS", "SHIPDATE", "COMMITDATE", "RECEIPTDATE", "SHIPINSTRUCT", "SHIPMODE",
 			"COMMENT"
 
