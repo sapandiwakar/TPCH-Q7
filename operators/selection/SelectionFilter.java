@@ -33,7 +33,7 @@ public class SelectionFilter {
 		if ("OR".equals(filterType)) {
 			for (Entry<Integer, String> entry : selectionArguments) {
 
-				System.out.println(tuple[entry.getKey()] + " vs " + entry.getValue() + " tuple: " + new ArrayList<String>(Arrays.asList(tuple)));
+				//System.out.println(tuple[entry.getKey()] + " vs " + entry.getValue() + " tuple: " + new ArrayList<String>(Arrays.asList(tuple)));
 
 				if (tuple[entry.getKey()].equals(entry.getValue()))
 					return true;
@@ -63,7 +63,7 @@ public class SelectionFilter {
 
 		selectionArguments = new ArrayList<SelectionEntry<Integer>>();
 
-		System.out.println("SelectionFilter n=" + nSelectionCols);
+		// System.out.println("SelectionFilter n=" + nSelectionCols);
 
 		for (int i = 0; i < nSelectionCols; i++) {
 			System.out.println("SelectionFilter key=" + sSelectionCols[i] + "--> " + selectionValues[i]);

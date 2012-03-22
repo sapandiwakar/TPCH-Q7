@@ -19,290 +19,306 @@ import relations.Relation;
 
 public class ReduceSideJoin extends Configured implements Tool {
 
-	/**
-	 * Outer is the smaller relation, i.e. it's values per key are copied into
-	 * mem in the reduce phase
-	 * 
-	 */
-	public static final String PREFIX_JOIN_SMALLER = "smaller_";
-	public static final String PREFIX_JOIN_LARGER = "larger_";
+  /**
+   * Outer is the smaller relation, i.e. it's values per key are copied into mem
+   * in the reduce phase
+   * 
+   */
+  public static final String PREFIX_JOIN_SMALLER = "smaller_";
+  public static final String PREFIX_JOIN_LARGER = "larger_";
 
-	public static final String PARAM_LARGER_NAME = "larger_name";
-	public static final String PARAM_SMALLER_NAME = "smaller_name";
-	public static final String PARAM_DATEFILTER_PREFIX = "date_filter_column_index_";
+  public static final String PARAM_LARGER_NAME = "larger_name";
+  public static final String PARAM_SMALLER_NAME = "smaller_name";
+  public static final String PARAM_DATEFILTER_PREFIX = "date_filter_column_index_";
 
-	protected static final String COLUMN_SEPARATOR_RE = "\\|";
-	protected static final String COLUMN_SEPARATOR = "|";
+  protected static final String COLUMN_SEPARATOR_RE = "\\|";
+  protected static final String COLUMN_SEPARATOR = "|";
 
-	private static boolean IS_LOCAL = true;
-	private static final boolean DEBUG = true;
+  private static boolean IS_LOCAL = true;
+  private static final boolean DEBUG = true;
 
-	public static class OuterMapper extends ReduceSideJoinAbstractMapper {
-		public void configure(JobConf conf) {
-			super.configure(conf, conf.get(PARAM_SMALLER_NAME, ""));
+  public static class OuterMapper extends ReduceSideJoinAbstractMapper {
+    public void configure(JobConf conf) {
+      super.configure(conf, conf.get(PARAM_SMALLER_NAME, ""));
 
-			reduceOrder = "0";
-			joinCol = conf.getInt("OuterJoinColumn", 0);
-			selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_SMALLER);
-		}
-	}
+      reduceOrder = "0";
+      joinCol = conf.getInt("OuterJoinColumn", 0);
+      selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_SMALLER);
+    }
+  }
 
-	public static class InnerMapper extends ReduceSideJoinAbstractMapper {
-		public void configure(JobConf conf) {
+  public static class InnerMapper extends ReduceSideJoinAbstractMapper {
+    public void configure(JobConf conf) {
 
-			super.configure(conf, conf.get(PARAM_LARGER_NAME, ""));
+      super.configure(conf, conf.get(PARAM_LARGER_NAME, ""));
 
-			reduceOrder = "1";
-			joinCol = conf.getInt("InnerJoinColumn", 0);
-			selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_LARGER);
-		}
+      reduceOrder = "1";
+      joinCol = conf.getInt("InnerJoinColumn", 0);
+      selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_LARGER);
+    }
 
-	}
+  }
 
-	public static class ReduceSideJoinAbstractMapper extends MapReduceBase implements Mapper<LongWritable, Text, TextPair, TextPair> {
+  public static class ReduceSideJoinAbstractMapper extends MapReduceBase implements
+      Mapper<LongWritable, Text, TextPair, TextPair> {
 
-		// Overridden by child class
-		protected static String reduceOrder;
-		protected static int joinCol; // TODO: this forces NO Parallel jobs
+    // Overridden by child class
+    protected static String reduceOrder;
+    protected static int joinCol; // TODO: this forces NO Parallel jobs
 
-		// TODO: add projection
-		protected static SelectionFilter selectionFilter;
-		private SimpleDateFormat date_format;
-		private Date date1;
-		private Date date2;
+    // TODO: add projection
+    protected static SelectionFilter selectionFilter;
+    private SimpleDateFormat date_format;
+    private Date date1;
+    private Date date2;
 
-		// TODO:
-		private int date_filter_column_index = -1;
+    // TODO:
+    private int date_filter_column_index = -1;
 
-		public void configure(JobConf conf, String relation_name) {
+    public void configure(JobConf conf, String relation_name) {
 
-			String date_filter_param = conf.get(PARAM_DATEFILTER_PREFIX + relation_name, "");
+      String date_filter_param = conf.get(PARAM_DATEFILTER_PREFIX + relation_name, "");
 
-			// TODO: date filter is hard-coded for now. It is activated if
-			// date_filter_column_index setting is set
-			if (date_filter_param != "") {
-				date_filter_column_index = Integer.parseInt(date_filter_param);
-				System.out.println("date_filter_column_index for " + relation_name + ":" + date_filter_column_index);
+      System.out.println("date_filter_column_index for " + relation_name + ":"
+          + date_filter_column_index);
 
-				date_format = new SimpleDateFormat("yyyy-MM-dd");
+      // TODO: date filter is hard-coded for now. It is activated if
+      // date_filter_column_index setting is set
+      if (date_filter_param != "") {
+        date_filter_column_index = Integer.parseInt(date_filter_param);
 
-				try {
-					date1 = date_format.parse("1995-01-01");
-					date2 = date_format.parse("1996-12-31");
+        date_format = new SimpleDateFormat("yyyy-MM-dd");
 
-				} catch (ParseException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
+        try {
+          date1 = date_format.parse("1995-01-01");
+          date2 = date_format.parse("1996-12-31");
 
-		};
+        } catch (ParseException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
+      }
 
-		public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output, Reporter reporter) throws IOException {
-			String[] tuple = value.toString().split(COLUMN_SEPARATOR_RE);
+    };
 
-			// System.out.println("map in: " + value);
+    public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output,
+        Reporter reporter) throws IOException {
+      String[] tuple = value.toString().split(COLUMN_SEPARATOR_RE);
 
-			// filter the rows out that don't pass the selection
-			if (!selectionFilter.checkSelection(tuple))
-				return;
+      // System.out.println("map in: " + value);
 
-			// TODO: hard coded date filter
-			if (date_filter_column_index >= 0) {
+      // filter the rows out that don't pass the selection
+      if (!selectionFilter.checkSelection(tuple))
+        return;
 
-				try {
-					Date date;
-					date = date_format.parse(tuple[date_filter_column_index]);
-					if (!(date1.compareTo(date) > 0 && date2.compareTo(date) < 0)) {
-						return;
-					}
-				} catch (ParseException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+      // TODO: hard coded date filter
+      if (date_filter_column_index >= 0) {
 
-			}
+        try {
+          Date date;
+          date = date_format.parse(tuple[date_filter_column_index]);
+          if (!(date1.compareTo(date) > 0 && date2.compareTo(date) < 0)) {
+            return;
+          }
+        } catch (ParseException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
 
-			// if (DEBUG) System.out.println("sel ok: " + value);
+      }
 
-			StringBuffer attrs = new StringBuffer();
-			for (int i = 0; i < tuple.length; i++) {
-				// TODO: for this is simplier and in general it's ok to leave it
-				// like this.
-				// if (i != joinCol) {
-				attrs.append(tuple[i] + COLUMN_SEPARATOR);
-				// }
-			}
+      // if (DEBUG) System.out.println("sel ok: " + value);
 
-			if (attrs.length() > 0) {
-				attrs.deleteCharAt(attrs.length() - 1);
-			}
+      StringBuffer attrs = new StringBuffer();
+      for (int i = 0; i < tuple.length; i++) {
+        // TODO: for this is simplier and in general it's ok to leave it
+        // like this.
+        // if (i != joinCol) {
+        attrs.append(tuple[i] + COLUMN_SEPARATOR);
+        // }
+      }
 
-			output.collect(new TextPair(tuple[joinCol], reduceOrder), new TextPair(attrs.toString(), reduceOrder));
-		}
+      if (attrs.length() > 0) {
+        attrs.deleteCharAt(attrs.length() - 1);
+      }
 
-	}
+      output.collect(new TextPair(tuple[joinCol], reduceOrder), new TextPair(attrs.toString(),
+          reduceOrder));
+    }
 
-	public static class KeyPartitioner implements Partitioner<TextPair, TextPair> {
+  }
 
-		@Override
-		public int getPartition(TextPair key, TextPair value, int numPartitions) {
-			return (key.getFirst().hashCode() & Integer.MAX_VALUE) % numPartitions;
-		}
+  public static class KeyPartitioner implements Partitioner<TextPair, TextPair> {
 
-		@Override
-		public void configure(JobConf conf) {
+    @Override
+    public int getPartition(TextPair key, TextPair value, int numPartitions) {
+      return (key.getFirst().hashCode() & Integer.MAX_VALUE) % numPartitions;
+    }
 
-		}
-	}
+    @Override
+    public void configure(JobConf conf) {
 
-	public static class JoinReducer extends MapReduceBase implements Reducer<TextPair, TextPair, Text, Text> {
+    }
+  }
 
-		public void reduce(TextPair key, Iterator<TextPair> values, OutputCollector<Text, Text> output, Reporter reporter) throws IOException {
-			ArrayList<String> buffer = new ArrayList<String>();
-			Text tag = key.getSecond();
-			TextPair value = null;
-			String attrs = null;
-			String bAttrs = null;
+  public static class JoinReducer extends MapReduceBase implements
+      Reducer<TextPair, TextPair, Text, Text> {
 
-			// System.out.println(key.getFirst().toString() + "\t" +
-			// key.getSecond().toString());
-			while (values.hasNext()) {
-				value = values.next();
+    public void reduce(TextPair key, Iterator<TextPair> values, OutputCollector<Text, Text> output,
+        Reporter reporter) throws IOException {
+      ArrayList<String> buffer = new ArrayList<String>();
+      Text tag = key.getSecond();
+      TextPair value = null;
+      String attrs = null;
+      String bAttrs = null;
 
-				// System.out.println(value.getFirst().toString() + "\t" +
-				// value.getSecond().toString());
-				if ((value.getSecond().compareTo(tag) == 0)) {
-					buffer.add(value.getFirst().toString());
-				} else {
-					bAttrs = value.getFirst().toString();
-					for (String val : buffer) {
-						if ("".compareTo(val) != 0 && "".compareTo(bAttrs) != 0) {
-							attrs = val + COLUMN_SEPARATOR + bAttrs;
-						} else {
-							attrs = val + bAttrs;
-						}
-						if (DEBUG)
-							System.out.println("reduce out:" + key.getFirst() + "-->" + attrs);
-						output.collect(key.getFirst(), new Text(attrs));
-					}
-				}
-			}
-			// System.out.println("----------");
-		}
-	}
+      // System.out.println(key.getFirst().toString() + "\t" +
+      // key.getSecond().toString());
+      while (values.hasNext()) {
+        value = values.next();
 
-	public int run(String[] args) throws Exception {
-		if (args.length != 5) {
-			System.out.println("USAGE: <prog name> <R input> <R joincol> <S input> <S joincol> <output>");
-			return -1;
-		}
+        // System.out.println(value.getFirst().toString() + "\t" +
+        // value.getSecond().toString());
+        if ((value.getSecond().compareTo(tag) == 0)) {
+          buffer.add(value.getFirst().toString());
+        } else {
+          bAttrs = value.getFirst().toString();
+          for (String val : buffer) {
+            if ("".compareTo(val) != 0 && "".compareTo(bAttrs) != 0) {
+              attrs = val + COLUMN_SEPARATOR + bAttrs;
+            } else {
+              attrs = val + bAttrs;
+            }
+            // if (DEBUG) System.out.println("reduce out:" + key.getFirst() +
+            // "-->" + attrs);
+            output.collect(key.getFirst(), new Text(attrs));
+          }
+        }
+      }
+      // System.out.println("----------");
+    }
+  }
 
-		String inInnerRelation = args[2];
-		String inOuterRelation = args[0];
+  public int run(String[] args) throws Exception {
+    if (args.length != 5) {
+      System.out.println("USAGE: <prog name> <R input> <R joincol> <S input> <S joincol> <output>");
+      return -1;
+    }
 
-		int innerJoinCol = Integer.parseInt(args[3]);
-		int outerJoinCol = Integer.parseInt(args[1]);
+    String inInnerRelation = args[2];
+    String inOuterRelation = args[0];
 
-		String output = args[4];
+    int innerJoinCol = Integer.parseInt(args[3]);
+    int outerJoinCol = Integer.parseInt(args[1]);
 
-		JobConf conf = getJoinConf(getConf(), inInnerRelation, innerJoinCol, inOuterRelation, outerJoinCol, output);
+    String output = args[4];
 
-		// Run job
-		JobClient.runJob(conf);
-		return 0;
-	}
+    JobConf conf = getJoinConf(getConf(), inInnerRelation, innerJoinCol, inOuterRelation,
+        outerJoinCol, output);
 
-	/**
-	 * Convience method to made definitions shorter
-	 * 
-	 * TODO: shall I change string parameters into Path? What about hdfs paths?
-	 * 
-	 * TODO: change params inner/outer into smaller/larger -- so it would be
-	 * more obvious
-	 * 
-	 * @param
-	 * @return
-	 */
-	public static JobConf getConf(Relation larger, String largerJoinCol, Relation smaller, String smallerJoinCol, Relation outRelation) {
+    // Run job
+    JobClient.runJob(conf);
+    return 0;
+  }
 
-		JobConf conf = ReduceSideJoin.getJoinConf(new Configuration(), larger.storageFileName, larger.schema.columnIndex(largerJoinCol),
-				smaller.storageFileName, smaller.schema.columnIndex(smallerJoinCol), outRelation.storageFileName);
+  /**
+   * Convience method to made definitions shorter
+   * 
+   * TODO: shall I change string parameters into Path? What about hdfs paths?
+   * 
+   * TODO: change params inner/outer into smaller/larger -- so it would be more
+   * obvious
+   * 
+   * @param
+   * @return
+   */
+  public static JobConf getConf(Relation larger, String largerJoinCol, Relation smaller,
+      String smallerJoinCol, Relation outRelation) {
 
-		conf.set(PARAM_SMALLER_NAME, smaller.name);
-		conf.set(PARAM_LARGER_NAME, larger.name);
+    JobConf conf = ReduceSideJoin.getJoinConf(new Configuration(), larger.storageFileName,
+        larger.schema.columnIndex(largerJoinCol), smaller.storageFileName,
+        smaller.schema.columnIndex(smallerJoinCol), outRelation.storageFileName);
 
-		return conf;
-	}
+    conf.set(PARAM_SMALLER_NAME, smaller.name);
+    conf.set(PARAM_LARGER_NAME, larger.name);
 
-	/**
-	 * Convience method to made definitions shorter: Natural join
-	 * 
-	 * more obvious
-	 * 
-	 * @param
-	 * @return
-	 */
-	public static JobConf getConf(Relation larger, Relation smaller, String naturalJoinCol, Relation outRelation) {
-		return getConf(larger, naturalJoinCol, smaller, naturalJoinCol, outRelation);
-	}
+    return conf;
+  }
 
-	/**
-	 * Returns default configuration
-	 * 
-	 * TODO: shall I change string parameters into Path? What about hdfs paths?
-	 * 
-	 * TODO: change params inner/outer into smaller/larger -- so it would be
-	 * more obvious
-	 * 
-	 * @param
-	 * @return
-	 */
-	public static JobConf getJoinConf(Configuration conf_, String inLargerPath, int largerJoinCol, String inSmallerPath, int smallerJoinCol, String outputPath) {
-		JobConf conf = new JobConf(conf_, ReduceSideJoin.class);
+  /**
+   * Convience method to made definitions shorter: Natural join
+   * 
+   * more obvious
+   * 
+   * @param
+   * @return
+   */
+  public static JobConf getConf(Relation larger, Relation smaller, String naturalJoinCol,
+      Relation outRelation) {
+    return getConf(larger, naturalJoinCol, smaller, naturalJoinCol, outRelation);
+  }
 
-		if (IS_LOCAL) {
-			conf.set("mapred.job.tracker", "local");
-			conf.set("fs.default.name", "local");
-		}
+  /**
+   * Returns default configuration
+   * 
+   * TODO: shall I change string parameters into Path? What about hdfs paths?
+   * 
+   * TODO: change params inner/outer into smaller/larger -- so it would be more
+   * obvious
+   * 
+   * @param
+   * @return
+   */
+  public static JobConf getJoinConf(Configuration conf_, String inLargerPath, int largerJoinCol,
+      String inSmallerPath, int smallerJoinCol, String outputPath) {
+    JobConf conf = new JobConf(conf_, ReduceSideJoin.class);
 
-		// Mapper classes & Input files
-		MultipleInputs.addInputPath(conf, new Path(inSmallerPath), TextInputFormat.class, OuterMapper.class);
-		MultipleInputs.addInputPath(conf, new Path(inLargerPath), TextInputFormat.class, InnerMapper.class);
+    if (IS_LOCAL) {
+      conf.set("mapred.job.tracker", "local");
+      // conf.set("fs.default.name", "local");
 
-		// Output path
-		FileOutputFormat.setOutputPath(conf, new Path(outputPath));
+      conf.set("fs.default.name", "file:///");
+    }
 
-		// Mapper output class
-		conf.setMapOutputKeyClass(TextPair.class);
-		conf.setMapOutputValueClass(TextPair.class);
+    // Mapper classes & Input files
+    MultipleInputs.addInputPath(conf, new Path(inSmallerPath), TextInputFormat.class,
+        OuterMapper.class);
+    MultipleInputs.addInputPath(conf, new Path(inLargerPath), TextInputFormat.class,
+        InnerMapper.class);
 
-		// Mapper Value Grouping
-		conf.setOutputValueGroupingComparator(TextPair.FirstComparator.class);
+    // Output path
+    FileOutputFormat.setOutputPath(conf, new Path(outputPath));
 
-		// Partitioner
-		conf.setPartitionerClass(KeyPartitioner.class);
+    // Mapper output class
+    conf.setMapOutputKeyClass(TextPair.class);
+    conf.setMapOutputValueClass(TextPair.class);
 
-		// Reducer
-		conf.setReducerClass(JoinReducer.class);
+    // Mapper Value Grouping
+    conf.setOutputValueGroupingComparator(TextPair.FirstComparator.class);
 
-		// Reducer output
-		conf.setOutputKeyClass(Text.class);
+    // Partitioner
+    conf.setPartitionerClass(KeyPartitioner.class);
 
-		// Set ReduceSideJoin columns
-		conf.setInt("OuterJoinColumn", smallerJoinCol);
-		conf.setInt("InnerJoinColumn", largerJoinCol);
+    // Reducer
+    conf.setReducerClass(JoinReducer.class);
 
-		if (DEBUG) {
-			System.out.println("Reduce side join:" + inSmallerPath + " X " + inLargerPath + "-->" + outputPath + "Join col idx: smaller=" + smallerJoinCol
-					+ "; larger=" + largerJoinCol);
-		}
+    // Reducer output
+    conf.setOutputKeyClass(Text.class);
 
-		return conf;
-	}
+    // Set ReduceSideJoin columns
+    conf.setInt("OuterJoinColumn", smallerJoinCol);
+    conf.setInt("InnerJoinColumn", largerJoinCol);
 
-	public static void main(String[] args) throws Exception {
-		int res = ToolRunner.run(new Configuration(), new ReduceSideJoin(), args);
-		System.exit(res);
-	}
+    if (DEBUG) {
+      System.out.println("Reduce side join:" + inSmallerPath + " X " + inLargerPath + "-->"
+          + outputPath + "Join col idx: smaller=" + smallerJoinCol + "; larger=" + largerJoinCol);
+    }
+
+    return conf;
+  }
+
+  public static void main(String[] args) throws Exception {
+    int res = ToolRunner.run(new Configuration(), new ReduceSideJoin(), args);
+    System.exit(res);
+  }
 }
