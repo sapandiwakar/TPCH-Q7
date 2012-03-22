@@ -15,30 +15,22 @@ import org.apache.hadoop.io.Text;
 public class Schema {
 	// Constants
 
-	public static ArrayList<String> NATIONS_FIELDS =
-            new ArrayList<String>(Arrays.asList(new String[] { "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" }));
+	public static List<String> NATIONS_FIELDS = Arrays.asList(
+            "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" );
 
-	public static ArrayList<String> SUPPLIER_FIELDS =
-            new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
-			"ACCTBAL", "COMMENT" }));
+	public static List<String> SUPPLIER_FIELDS = Arrays.asList(
+            "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+			"ACCTBAL", "COMMENT" );
 
-	public static ArrayList<String> CUSTOMER_FIELDS =
-            new ArrayList<String>(Arrays.asList(new String[] {
+	public static List<String> CUSTOMER_FIELDS = Arrays.asList(
                 "CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
-			"ACCTBAL", "MKTSEGMENT", "COMMENT" }));
+			"ACCTBAL", "MKTSEGMENT", "COMMENT" );
 
-	/*
-	 * TODO: field order may be wrong?? Don't fit schema from pdf, but dont join
-	 * otherwise
-	 */
-	public static ArrayList<String> LINEITEM_FIELDS = new ArrayList<String>(Arrays.asList(new String[] {"ORDERKEY", "PARTKEY", "SUPPKEY", "LINENUMBER",
-			"QUANTITY", "EXTENDEDPRICE", "DISCOUNT", "TAX", "RETURNFLAG", "LINESTATUS", "SHIPDATE", "COMMITDATE", "RECEIPTDATE", "SHIPINSTRUCT", "SHIPMODE",
-			"COMMENT"
-
-	/*
-	 * *
-	 * TODO : add other fields ! ! !
-	 */}));
+	public static List<String> LINEITEM_FIELDS = Arrays.asList(
+                        "ORDERKEY", "PARTKEY", "SUPPKEY", "LINENUMBER",
+			"QUANTITY", "EXTENDEDPRICE", "DISCOUNT", "TAX", "RETURNFLAG",
+                        "LINESTATUS", "SHIPDATE", "COMMITDATE", "RECEIPTDATE",
+                        "SHIPINSTRUCT", "SHIPMODE", "COMMENT");
         
         public static List<String> ORDERS_FIELDS = Arrays.asList( "ORDERKEY",
             "CUSTKEY", "ORDERSTATUS", "TOTALPRICE", "ORDERDATE", "ORDERPRIORITY",
