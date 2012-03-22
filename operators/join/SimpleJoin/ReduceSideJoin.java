@@ -1,6 +1,8 @@
 package operators.join.SimpleJoin;
 
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 import operators.join.TextPair;
@@ -25,6 +27,10 @@ public class ReduceSideJoin extends Configured implements Tool {
 	public static final String PREFIX_JOIN_SMALLER = "smaller_";
 	public static final String PREFIX_JOIN_LARGER = "larger_";
 
+	public static final String PARAM_LARGER_NAME = "larger_name";
+	public static final String PARAM_SMALLER_NAME = "smaller_name";
+	public static final String PARAM_DATEFILTER_PREFIX = "date_filter_column_index_";
+
 	protected static final String COLUMN_SEPARATOR_RE = "\\|";
 	protected static final String COLUMN_SEPARATOR = "|";
 
@@ -33,6 +39,8 @@ public class ReduceSideJoin extends Configured implements Tool {
 
 	public static class OuterMapper extends ReduceSideJoinAbstractMapper {
 		public void configure(JobConf conf) {
+			super.configure(conf, conf.get(PARAM_SMALLER_NAME, ""));
+
 			reduceOrder = "0";
 			joinCol = conf.getInt("OuterJoinColumn", 0);
 			selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_SMALLER);
@@ -41,6 +49,9 @@ public class ReduceSideJoin extends Configured implements Tool {
 
 	public static class InnerMapper extends ReduceSideJoinAbstractMapper {
 		public void configure(JobConf conf) {
+
+			super.configure(conf, conf.get(PARAM_LARGER_NAME, ""));
+
 			reduceOrder = "1";
 			joinCol = conf.getInt("InnerJoinColumn", 0);
 			selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_LARGER);
@@ -56,6 +67,36 @@ public class ReduceSideJoin extends Configured implements Tool {
 
 		// TODO: add projection
 		protected static SelectionFilter selectionFilter;
+		private SimpleDateFormat date_format;
+		private Date date1;
+		private Date date2;
+
+		// TODO:
+		private int date_filter_column_index = -1;
+
+		public void configure(JobConf conf, String relation_name) {
+
+			String date_filter_param = conf.get(PARAM_DATEFILTER_PREFIX + relation_name, "");
+
+			// TODO: date filter is hard-coded for now. It is activated if
+			// date_filter_column_index setting is set
+			if (date_filter_param != "") {
+				date_filter_column_index = Integer.parseInt(date_filter_param);
+				System.out.println("date_filter_column_index for " + relation_name + ":" + date_filter_column_index);
+
+				date_format = new SimpleDateFormat("yyyy-MM-dd");
+
+				try {
+					date1 = date_format.parse("1995-01-01");
+					date2 = date_format.parse("1996-12-31");
+
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+		};
 
 		public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output, Reporter reporter) throws IOException {
 			String[] tuple = value.toString().split(COLUMN_SEPARATOR_RE);
@@ -66,8 +107,23 @@ public class ReduceSideJoin extends Configured implements Tool {
 			if (!selectionFilter.checkSelection(tuple))
 				return;
 
-			if (DEBUG)
-				System.out.println("sel ok: " + value);
+			// TODO: hard coded date filter
+			if (date_filter_column_index >= 0) {
+
+				try {
+					Date date;
+					date = date_format.parse(tuple[date_filter_column_index]);
+					if (!(date1.compareTo(date) > 0 && date2.compareTo(date) < 0)) {
+						return;
+					}
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+			}
+
+			// if (DEBUG) System.out.println("sel ok: " + value);
 
 			StringBuffer attrs = new StringBuffer();
 			for (int i = 0; i < tuple.length; i++) {
@@ -88,6 +144,7 @@ public class ReduceSideJoin extends Configured implements Tool {
 	}
 
 	public static class KeyPartitioner implements Partitioner<TextPair, TextPair> {
+
 		@Override
 		public int getPartition(TextPair key, TextPair value, int numPartitions) {
 			return (key.getFirst().hashCode() & Integer.MAX_VALUE) % numPartitions;
@@ -95,6 +152,7 @@ public class ReduceSideJoin extends Configured implements Tool {
 
 		@Override
 		public void configure(JobConf conf) {
+
 		}
 	}
 
@@ -167,8 +225,14 @@ public class ReduceSideJoin extends Configured implements Tool {
 	 * @return
 	 */
 	public static JobConf getConf(Relation larger, String largerJoinCol, Relation smaller, String smallerJoinCol, Relation outRelation) {
-		return ReduceSideJoin.getJoinConf(new Configuration(), larger.storageFileName, larger.schema.columnIndex(largerJoinCol), smaller.storageFileName,
-				smaller.schema.columnIndex(smallerJoinCol), outRelation.storageFileName);
+
+		JobConf conf = ReduceSideJoin.getJoinConf(new Configuration(), larger.storageFileName, larger.schema.getColumnIndex(largerJoinCol),
+				smaller.storageFileName, smaller.schema.getColumnIndex(smallerJoinCol), outRelation.storageFileName);
+
+		conf.set(PARAM_SMALLER_NAME, smaller.name);
+		conf.set(PARAM_LARGER_NAME, larger.name);
+
+		return conf;
 	}
 
 	/**

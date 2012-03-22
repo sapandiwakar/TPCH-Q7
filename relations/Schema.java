@@ -31,7 +31,7 @@ public class Schema {
 	 * TODO: field order may be wrong?? Don't fit schema from pdf, but dont join
 	 * otherwise
 	 */
-	public static ArrayList<String> LINEITEM_FIELDS = new ArrayList<String>(Arrays.asList(new String[] { "SUPPKEY", "ORDERKEY", "PARTKEY", "LINENUMBER",
+	public static ArrayList<String> LINEITEM_FIELDS = new ArrayList<String>(Arrays.asList(new String[] {"ORDERKEY", "PARTKEY", "SUPPKEY", "LINENUMBER",
 			"QUANTITY", "EXTENDEDPRICE", "DISCOUNT", "TAX", "RETURNFLAG", "LINESTATUS", "SHIPDATE", "COMMITDATE", "RECEIPTDATE", "SHIPINSTRUCT", "SHIPMODE",
 			"COMMENT"
 
@@ -94,7 +94,7 @@ public class Schema {
 	public List<Integer> getColumnIndices(List<String> colNames) {
 		ArrayList<Integer> result = new ArrayList<Integer>(colNames.size());
 		for (String col : colNames)
-			result.add(columnIndex(col));
+			result.add(getColumnIndex(col));
 		Collections.sort(result);
 		return result;
 	}
@@ -190,24 +190,9 @@ public class Schema {
 
 	// unit test
 	public static void main(String[] args) throws Exception {
-		List<String> names123 = new ArrayList<String>() {
-			{
-				add("col1");
-				add("col2");
-				add("col3");
-			}
-		};
-		List<String> names2 = new ArrayList<String>() {
-			{
-				add("col2");
-			}
-		};
-		List<String> names13 = new ArrayList<String>() {
-			{
-				add("col1");
-				add("col3");
-			}
-		};
+		List<String> names123 = Arrays.asList( "col1", "col2", "col3" );
+		List<String> names2 = Arrays.asList( "col2" );
+		List<String> names13 = Arrays.asList( "col1", "col3" );
 		List<String> names12313 = new ArrayList<String>(names123);
 		names12313.addAll(names13);
 
@@ -215,15 +200,15 @@ public class Schema {
 		Schema schema13 = new Schema(names13);
 
 		Text row = new Text("data1|data2|data3");
-		assert (schema.getValue(row, schema.columnIndex("col1")) == new Text("data1"));
-		assert (schema.getValue(row, schema.columnIndex("col3")) == new Text("data3"));
+		assert (schema.getValue(row, schema.getColumnIndex("col1")) == new Text("data1"));
+		assert (schema.getValue(row, schema.getColumnIndex("col3")) == new Text("data3"));
 
-		List<Integer> indices = schema.columnIndices(names2);
+		List<Integer> indices = schema.getColumnIndices(names2);
 		assert (schema.rowProjection(row, indices) == new Text("data2"));
 
 		List<String> names31 = names13;
 		Collections.reverse(names31);
-		indices = schema.columnIndices(names31);
+		indices = schema.getColumnIndices(names31);
 		assert (schema.rowProjection(row, indices) == new Text("data1|data3"));
 
 		assert (schema.projection(indices) == schema13);

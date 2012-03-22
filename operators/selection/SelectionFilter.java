@@ -83,7 +83,7 @@ public class SelectionFilter {
 		List<String> values = new ArrayList<String>();
 
 		for (SelectionEntry<String> entry : nationFilters) {
-			columnIndexes.add(schema.columnIndex(entry.getKey()) + "");
+			columnIndexes.add(schema.getColumnIndex(entry.getKey()) + "");
 			values.add(entry.getValue());
 
 		}
