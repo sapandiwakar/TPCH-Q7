@@ -3,7 +3,7 @@
 	<classpathentry excluding="SimpleJoin/" kind="src" path=""/>
 	<classpathentry kind="src" path="SimpleJoin"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-	<classpathentry kind="lib" path="/usr/share/hadoop/hadoop-core-1.0.1.jar"/>
+	<classpathentry kind="lib" path="/usr/share/hadoop/hadoop-core-1.0.1.jar" sourcepath="/hadoop-common"/>
 	<classpathentry kind="lib" path="/usr/share/hadoop/hadoop-ant-1.0.1.jar"/>
 	<classpathentry kind="lib" path="/usr/share/hadoop/hadoop-client-1.0.1.jar"/>
 	<classpathentry kind="lib" path="/usr/share/hadoop/hadoop-minicluster-1.0.1.jar"/>

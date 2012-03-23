@@ -62,9 +62,10 @@ public class TextPair implements WritableComparable<TextPair> {
 		return false;
 	}
 
+	// TODO: where and why is this used??? hack: changed to |
 	@Override
 	public String toString() {
-		return first + "\t" + second;
+		return first + "," + second;
 	}
 
 	@Override

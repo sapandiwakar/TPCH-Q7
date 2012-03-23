@@ -1,8 +1,6 @@
 package operators.join.SimpleJoin;
 
 import java.io.IOException;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 import operators.join.TextPair;
@@ -14,11 +12,10 @@ import org.apache.hadoop.conf.*;
 import org.apache.hadoop.io.*;
 import org.apache.hadoop.mapred.*;
 import org.apache.hadoop.mapred.lib.MultipleInputs;
-import org.apache.hadoop.util.*;
 
 import relations.Relation;
 
-public class ReduceSideJoin extends Configured {
+public class ReduceSideJoin {
 
   /**
    * Outer is the smaller relation, i.e. it's values per key are copied into mem
@@ -34,45 +31,53 @@ public class ReduceSideJoin extends Configured {
   protected static final String COLUMN_SEPARATOR_RE = "\\|";
   protected static final String COLUMN_SEPARATOR = "|";
 
-  private static boolean IS_LOCAL = true;
+  private static final boolean IS_LOCAL = true;
   private static final boolean DEBUG = true;
 
-  public static class OuterMapper extends ReduceSideJoinAbstractMapper {
+  public static class SmallerRelationMapper extends ReduceSideJoinAbstractMapper {
     public void configure(JobConf conf) {
-      super.configureDateSelection(conf, conf.get(PARAM_SMALLER_NAME, ""));
-
+      relationName = conf.get(PARAM_SMALLER_NAME, "");
       reduceOrder = "0";
       joinCol = conf.getInt("OuterJoinColumn", 0);
+
       selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_SMALLER);
-    }
+      configureDateSelection(conf);
+    };
+
   }
 
-  public static class InnerMapper extends ReduceSideJoinAbstractMapper {
+  public static class LargerRelationMapper extends ReduceSideJoinAbstractMapper {
     public void configure(JobConf conf) {
 
-      super.configureDateSelection(conf, conf.get(PARAM_LARGER_NAME, ""));
-
+      relationName = conf.get(PARAM_LARGER_NAME, "");
       reduceOrder = "1";
       joinCol = conf.getInt("InnerJoinColumn", 0);
+
       selectionFilter = new SelectionFilter(conf, PREFIX_JOIN_LARGER);
+      configureDateSelection(conf);
     }
 
   }
 
   public static class ReduceSideJoinAbstractMapper extends MapReduceBase implements
       Mapper<LongWritable, Text, TextPair, TextPair> {
+    // TODO: static fields force NO Parallel jobs on same
+    // machine!!! Is this really really always the
+    // case. In the new API it seems we could use Context object for this... but
+    // is this performant?
 
     // Overridden by child class
-    protected static String reduceOrder;
-    protected static int joinCol; // TODO: this forces NO Parallel jobs
+    protected String reduceOrder;
+    protected int joinCol;
 
     // TODO: add projection
-    protected static SelectionFilter selectionFilter;
-    protected static DateSelectionFilter dateSelectionFilter = null;
+    protected SelectionFilter selectionFilter;
+    protected DateSelectionFilter dateSelectionFilter = null;
 
+    protected String relationName = "";
 
-    public void configureDateSelection(JobConf conf, String relation_name) {
-      dateSelectionFilter = new DateSelectionFilter(conf, relation_name);
+    protected void configureDateSelection(Configuration conf) {
+      dateSelectionFilter = new DateSelectionFilter(conf, relationName);
     }
 
     public void map(LongWritable key, Text value, OutputCollector<TextPair, TextPair> output,
@@ -103,10 +108,18 @@ public class ReduceSideJoin extends Configured {
         attrs.deleteCharAt(attrs.length() - 1);
       }
 
-      output.collect(new TextPair(tuple[joinCol], reduceOrder), new TextPair(attrs.toString(),
-          reduceOrder));
-    }
+      // DEBUGING
+      try {
+        output.collect(new TextPair(tuple[joinCol], reduceOrder), new TextPair(attrs.toString(),
+            reduceOrder));
+      } catch (ArrayIndexOutOfBoundsException e) {
+        // TODO: handle exception
+        e.printStackTrace();
+        System.out.println("Error at rel=" + relationName + " joinCol=" + joinCol + " for tuple="
+            + Arrays.toString(tuple));
 
+      }
+    }
   }
 
   public static class KeyPartitioner implements Partitioner<TextPair, TextPair> {
@@ -117,50 +130,62 @@ public class ReduceSideJoin extends Configured {
     }
 
     @Override
-    public void configure(JobConf conf) {
+    public void configure(JobConf arg0) {
+      // TODO Auto-generated method stub
 
     }
+
   }
 
+  /***
+   * TODO: behaviour of this may be a bit undefined!!!
+   * 
+   * @author vidma
+   * 
+   */
   public static class JoinReducer extends MapReduceBase implements
-      Reducer<TextPair, TextPair, Text, Text> {
+      Reducer<TextPair, TextPair, NullWritable, Text> {
 
-    public void reduce(TextPair key, Iterator<TextPair> values, OutputCollector<Text, Text> output,
-        Reporter reporter) throws IOException {
-      ArrayList<String> buffer = new ArrayList<String>();
-      Text tag = key.getSecond();
+    private static final Text smallerRelmarker = new Text("0");
+
+    public void reduce(TextPair key, Iterator<TextPair> values,
+        OutputCollector<NullWritable, Text> output, Reporter reporter) throws IOException {
+
+      ArrayList<String> smaller_relation_tuples = new ArrayList<String>();
+
       TextPair value = null;
-      String attrs = null;
-      String bAttrs = null;
+      String result_tuple = null;
+      String larger_rel_tuple = null;
 
-      // System.out.println(key.getFirst().toString() + "\t" +
-      // key.getSecond().toString());
       while (values.hasNext()) {
         value = values.next();
 
-        // System.out.println(value.getFirst().toString() + "\t" +
-        // value.getSecond().toString());
-        if ((value.getSecond().compareTo(tag) == 0)) {
-          buffer.add(value.getFirst().toString());
+        if ((value.getSecond().compareTo(smallerRelmarker) == 0)) {
+
+          // add the whole tuple of smaller relation
+          smaller_relation_tuples.add(value.getFirst().toString());
         } else {
-          bAttrs = value.getFirst().toString();
-          // TODO: something too complex is being done
 
-          for (String val : buffer) {
-            if ("".compareTo(val) != 0 && "".compareTo(bAttrs) != 0) {
-              attrs = val + COLUMN_SEPARATOR + bAttrs;
-            } else {
-              attrs = val + bAttrs;
-            }
+          // We do INNER join, so if smaller relation not present, we can quit
+          // immediately!
+          if (smaller_relation_tuples.size() == 0) {
+            return;
+          }
 
-            // if (DEBUG) System.out.println("reduce out:" + key.getFirst() +
-            // "-->" + attrs);
+          larger_rel_tuple = value.getFirst().toString();
+          // System.out.println("match (k=" + key.getFirst() + ") smaller: " +
+          // smaller_relation_tuples + "larger: " + larger_rel_tuple);
 
-            output.collect(key.getFirst(), new Text(attrs));
+          for (String smaller_rel_tuple : smaller_relation_tuples) {
+
+            result_tuple = smaller_rel_tuple + COLUMN_SEPARATOR + larger_rel_tuple;
+
+            // Instead of key.getFirst() we output null for a key, so only the
+            // tuple gets written into intermediate file
+            output.collect(null, new Text(result_tuple));
           }
         }
       }
-      // System.out.println("----------");
     }
   }
 
@@ -174,61 +199,38 @@ public class ReduceSideJoin extends Configured {
    * 
    * @param
    * @return
+   * @throws IOException
    */
-  public static JobConf getConf(Relation larger, String largerJoinCol, Relation smaller,
-      String smallerJoinCol, Relation outRelation) {
-
-    JobConf conf = ReduceSideJoin.getJoinConf(new Configuration(), larger.storageFileName,
-        larger.schema.getColumnIndex(largerJoinCol), smaller.storageFileName,
-        smaller.schema.getColumnIndex(smallerJoinCol), outRelation.storageFileName);
-
-    conf.set(PARAM_SMALLER_NAME, smaller.name);
-    conf.set(PARAM_LARGER_NAME, larger.name);
-
-    return conf;
-  }
-
-  /**
-   * Convience method to made definitions shorter: Natural join
-   * 
-   * more obvious
-   * 
-   * @param
-   * @return
-   */
-  public static JobConf getConf(Relation larger, Relation smaller, String naturalJoinCol,
-      Relation outRelation) {
-    return getConf(larger, naturalJoinCol, smaller, naturalJoinCol, outRelation);
-  }
-
-  /**
-   * Returns default configuration
-   * 
-   * TODO: shall I change string parameters into Path? What about hdfs paths?
-   * 
-   * TODO: change params inner/outer into smaller/larger -- so it would be more
-   * obvious
-   * 
-   * @param
-   * @return
-   */
-  public static JobConf getJoinConf(Configuration conf_, String inLargerPath, int largerJoinCol,
-      String inSmallerPath, int smallerJoinCol, String outputPath) {
-    JobConf conf = new JobConf(conf_, ReduceSideJoin.class);
+  public static JobConf createJob(Configuration conf_, Relation larger, String largerJoinCol,
+      Relation smaller, String smallerJoinCol, Relation outRelation) throws IOException {
 
     if (IS_LOCAL) {
-      conf.set("mapred.job.tracker", "local");
-      conf.set("fs.default.name", "file:///");
+      conf_.set("mapred.job.tracker", "local");
+      conf_.set("fs.default.name", "file:///");
     }
 
+    // Set ReduceSideJoin columns
+    conf_.setInt("OuterJoinColumn", smaller.schema.getColumnIndex(smallerJoinCol));
+    conf_.setInt("InnerJoinColumn", larger.schema.getColumnIndex(largerJoinCol));
+
+    conf_.set(PARAM_SMALLER_NAME, smaller.name);
+    conf_.set(PARAM_LARGER_NAME, larger.name);
+
+    JobConf conf = new JobConf(conf_);
+
+    obtainResultSchema(larger, smaller, outRelation);
+
+    conf.setJarByClass(ReduceSideJoin.class);
+
     // Mapper classes & Input files
-    MultipleInputs.addInputPath(conf, new Path(inSmallerPath), TextInputFormat.class,
-        OuterMapper.class);
-    MultipleInputs.addInputPath(conf, new Path(inLargerPath), TextInputFormat.class,
-        InnerMapper.class);
+    // TODO: this is a hack to disregard the outputted keys
+    MultipleInputs.addInputPath(conf, new Path(smaller.storageFileName), TextInputFormat.class,
+        SmallerRelationMapper.class);
+    MultipleInputs.addInputPath(conf, new Path(larger.storageFileName), TextInputFormat.class,
+        LargerRelationMapper.class);
 
     // Output path
-    FileOutputFormat.setOutputPath(conf, new Path(outputPath));
+    FileOutputFormat.setOutputPath(conf, new Path(outRelation.storageFileName));
 
     // Mapper output class
     conf.setMapOutputKeyClass(TextPair.class);
@@ -244,18 +246,43 @@ public class ReduceSideJoin extends Configured {
     conf.setReducerClass(JoinReducer.class);
 
     // Reducer output
-    conf.setOutputKeyClass(Text.class);
+    // TODO: SequenceFileInputFormat may be more efficient way of storing
+    // intermediate data!
 
-    // Set ReduceSideJoin columns
-    conf.setInt("OuterJoinColumn", smallerJoinCol);
-    conf.setInt("InnerJoinColumn", largerJoinCol);
+    // TODO: remove the key, so output is consistent with input. this do not
+    // work!!!
+    conf.setOutputFormat(TextOutputFormat.class);
+    conf.setOutputKeyClass(NullWritable.class);
+    conf.setOutputValueClass(Text.class);
 
-    if (DEBUG) {
-      System.out.println("Reduce side join:" + inSmallerPath + " X " + inLargerPath + "-->"
-          + outputPath + "Join col idx: smaller=" + smallerJoinCol + "; larger=" + largerJoinCol);
-    }
+    // TODO: probably we'll use NullOutputFormat for the final result
 
     return conf;
+  }
+
+  /**
+   * Convience method to made definitions shorter: Natural join
+   * 
+   * also initializes the resulting relation schema!
+   * 
+   * more obvious
+   * 
+   * @param
+   * @return
+   * @throws IOException
+   */
+  public static JobConf createJob(Configuration conf, Relation larger, Relation smaller,
+      String naturalJoinCol, Relation outRelation) throws IOException {
+    return createJob(conf, larger, naturalJoinCol, smaller, naturalJoinCol, outRelation);
+  }
+
+  /**
+   * @param larger
+   * @param smaller
+   * @param outRelation
+   */
+  private static void obtainResultSchema(Relation larger, Relation smaller, Relation outRelation) {
+    outRelation.schema = smaller.schema.join(larger.schema);
   }
 
 }

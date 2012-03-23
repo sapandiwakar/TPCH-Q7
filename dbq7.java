@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import operators.join.SimpleJoin.ReduceSideJoin;
@@ -6,79 +7,49 @@ import operators.selection.DateSelectionFilter;
 import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
 
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapred.jobcontrol.*;
+import org.apache.hadoop.mapred.jobcontrol.Job;
 
 import relations.Relation;
 import relations.Schema;
 
 public class dbq7 {
 
-  // TODO: More robust way of initializing schemas
-  // TODO: fill in the fields
-  static Schema schemaSupplier = new Schema(Schema.SUPPLIER_FIELDS);
-  static Schema schemaNations = new Schema(Schema.NATIONS_FIELDS);
-  static Schema schemaLineItem = new Schema(Schema.LINEITEM_FIELDS);
-  static Schema schemaCustomer = new Schema(Schema.CUSTOMER_FIELDS);
-  static Schema schemaOrder = new Schema(Schema.ORDERS_FIELDS);
-
-  // TODO: this is a bit messy. TODO: join itself to return new schema
-
-  // TODO: nice way of handling schema changes, including projections
-  // TODO: smaller is first, the param is first in schema.join
-  static Schema schemaN1Supplier = schemaSupplier.join(schemaNations);
-  static Schema schemaImdN1Supplier_LineItem = schemaLineItem.join(schemaN1Supplier);
-  static Schema schemaImdN2Customer = schemaCustomer.join(schemaNations);
-  static Schema schemaImdN2CustomerOrders = schemaImdN2Customer.join(schemaOrder);
-  static Schema schemaImdJoinResult = schemaImdN1Supplier_LineItem.join(schemaImdN2CustomerOrders);
-
-  static String inputFilesPrefix = "/team8/input/";
-  static String tmpFilesPrefix = "/team8/temp/";
-
-  static String inSupplier = inputFilesPrefix + "supplier.tbl";
-  static String inNations = inputFilesPrefix + "nation.tbl";
-  static String inLineItem = inputFilesPrefix + "lineitem.tbl";
-  static String inCustomer = inputFilesPrefix + "customer.tbl";
-  static String inOrder = inputFilesPrefix + "orders.tbl";
-
-  static Relation relSupplier = new Relation(schemaSupplier, inSupplier, "Supplier");
-  static Relation relNations = new Relation(schemaNations, inNations, "Nation");
-  static Relation relLineItem = new Relation(schemaLineItem, inLineItem, "LineItem");
-  static Relation relCustomer = new Relation(schemaCustomer, inCustomer, "Customer");
+  // input Relations
+  static Relation relSupplier = new Relation(new Schema(Schema.SUPPLIER_FIELDS), "supplier.tbl");
+  static Relation relNations = new Relation(new Schema(Schema.NATIONS_FIELDS), "nation.tbl");
+  static Relation relLineItem = new Relation(new Schema(Schema.LINEITEM_FIELDS), "lineitem.tbl");
+  static Relation relCustomer = new Relation(new Schema(Schema.CUSTOMER_FIELDS), "customer.tbl");
+  static Relation relOrder = new Relation(new Schema(Schema.ORDERS_FIELDS), "orders.tbl");
 
   // Intermediate result files
-  static Relation relImdN1Supplier = new Relation(schemaN1Supplier, tmpFilesPrefix + "N1Supplier");
-
-  static Relation relImdN1SupplierLineItem = new Relation(schemaImdN1Supplier_LineItem,
-      tmpFilesPrefix + "N1SupplierLineItem");
-
-  static Relation relImdN2Customer = new Relation(schemaImdN2Customer, tmpFilesPrefix
-      + "N2Customer");
-
-  static Relation relImdN2CustomerOrders = new Relation(schemaImdN2Customer, tmpFilesPrefix
-      + "N2CustomerOrders");
-
-  static Relation relImdJoinResult = new Relation(schemaImdJoinResult, tmpFilesPrefix
-      + "JoinResult");
+  static Relation relImdN1Supplier = new Relation("ImdN1Supplier");
+  static Relation relImdN1SupplierLineItem = new Relation("ImdN1SupplierLineItem");
+  static Relation relImdN2Customer = new Relation("ImdN2Customer");
+  static Relation relImdN2CustomerOrders = new Relation("N2CustomerOrders");
+  static Relation relImdJoinResult = new Relation("ImdJoinResult");
 
   /**
    * @param args
    * @throws IOException
+   * @throws ClassNotFoundException
+   * @throws InterruptedException
    */
   public static void main(String[] args) throws IOException {
-
-    JobControl jobs = buildJobs();
-    jobs.run();
-    System.exit(0);
-  }
-
-  public static JobControl buildJobs() throws IOException {
     // ======
     // Params
     String nation1 = "FRANCE";
     String nation2 = "GERMANY";
+    
     // ======
+
+    JobControl jobs = buildJobs(nation1, nation2);
+    jobs.run();
+
+  }
+
+  public static JobControl buildJobs(String nation1, String nation2) throws IOException {
 
     JobControl jbcntrl = new JobControl("jbcntrl");
 
@@ -87,78 +58,49 @@ public class dbq7 {
     // =========
     // TODO: this still will have to know about selections and projections
 
-    JobConf job_n1_suppliers_conf = ReduceSideJoin.getConf(relSupplier, relNations, "NATIONKEY",
-        relImdN1Supplier);
     // add selection: TODO: for now default selection type is OR
     @SuppressWarnings("unchecked")
     List<SelectionEntry<String>> nationFilters = Arrays.asList(new SelectionEntry<String>("NAME",
         nation1), new SelectionEntry<String>("NAME", nation2));
 
-    SelectionFilter.addSelectionsToJob(job_n1_suppliers_conf, ReduceSideJoin.PREFIX_JOIN_SMALLER,
-        nationFilters, relNations.schema);
+    Configuration job_n1_suppliers_conf = SelectionFilter.addSelectionsToJob(new Configuration(),
+        ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
 
-    ControlledJob job_n1_suppliers = new ControlledJob(job_n1_suppliers_conf);
-    job_n1_suppliers.setJobName("job_n1_suppliers");
+    Job job_n1_suppliers = new Job(ReduceSideJoin.createJob(job_n1_suppliers_conf, relSupplier,
+        relNations, "NATIONKEY", relImdN1Supplier), new ArrayList<Job>());
     jbcntrl.addJob(job_n1_suppliers);
-
-    System.out.println("Join schema:" + schemaN1Supplier.toString() + " ind of SUPPKEY="
-        + schemaN1Supplier.getColumnIndex("SUPPKEY"));
 
     // ===============================================
     // map-side join LineItem with [o(n1) |><| supplier]
     // ==================================================
-    JobConf job_n1_suppliers_lineitem_conf = ReduceSideJoin.getConf(relLineItem, relImdN1Supplier,
-        "SUPPKEY", relImdN1SupplierLineItem);
+    Configuration job_n1_suppliers_lineitem_conf = DateSelectionFilter.addSelection(
+        new Configuration(), relLineItem, "SHIPDATE");
 
-    // enable the date filter by providing column index. TODO: clean up
-    job_n1_suppliers_lineitem_conf.set(DateSelectionFilter.PARAM_DATEFILTER_PREFIX
-        + relLineItem.name, relLineItem.schema.getColumnIndex("SHIPDATE") + "");
-
-    ControlledJob job_n1_suppliers_lineitem = new ControlledJob(job_n1_suppliers_lineitem_conf);
-
-    // set job dependencies
-    job_n1_suppliers_lineitem.addDependingJob(job_n1_suppliers);
+    Job job_n1_suppliers_lineitem = new Job(ReduceSideJoin.createJob(
+        job_n1_suppliers_lineitem_conf, relLineItem, relImdN1Supplier, "SUPPKEY",
+        relImdN1SupplierLineItem), new ArrayList<Job>(Arrays.asList(job_n1_suppliers)));
+    // TODO: it is failing here!!!
     jbcntrl.addJob(job_n1_suppliers_lineitem);
 
     // RIGHT - BRANCH
 
-    // ======
-    // map-side join o(n2) |><| Customer
-    // =========
-    // TODO: this still will have to know about selections and projections
-
-    JobConf job_n2_customers_conf = ReduceSideJoin.getConf(relCustomer, relNations, "NATIONKEY",
-        relImdN2Customer);
-    SelectionFilter.addSelectionsToJob(job_n2_customers_conf, ReduceSideJoin.PREFIX_JOIN_SMALLER,
-        nationFilters, relNations.schema);
-
-    ControlledJob job_n2_customer = new ControlledJob(job_n2_customers_conf);
-    jbcntrl.addJob(job_n2_customer);
-
-    // ======
-    // map-side join Order X [o(n2) |><| Customer]
-    // =========
-    // TODO: this still will have to know about selections and projections
-
-    JobConf job_n2_customer_orders_conf = ReduceSideJoin.getConf(relCustomer, relNations,
-        "NATIONKEY", relImdN2CustomerOrders);
-
-    ControlledJob job_n2_customer_orders = new ControlledJob(job_n2_customer_orders_conf);
-    job_n2_customer_orders.addDependingJob(job_n2_customer);
-    jbcntrl.addJob(job_n2_customer_orders);
+    Job job_n2_customer_orders = get_jobs_N2_Customer_Order(jbcntrl, nationFilters);
 
     // =============================
     // finally join the two huge branches
     // ========================
 
-    JobConf final_join_conf = ReduceSideJoin.getConf(relImdN1SupplierLineItem, relImdN2Customer,
-        "ORDERKEY", relImdJoinResult);
-
     // TODO: Add Filter
     // TODO: refactor selections
-    ControlledJob job_final_join = new ControlledJob(final_join_conf);
-    job_final_join.addDependingJob(job_n2_customer_orders);
-    job_final_join.addDependingJob(job_n1_suppliers_lineitem);
+    Job job_final_join = new Job(ReduceSideJoin.createJob(new Configuration(),
+        relImdN1SupplierLineItem, relImdN2CustomerOrders, "ORDERKEY", relImdJoinResult),
+        new ArrayList<Job>(Arrays.asList(job_n1_suppliers_lineitem, job_n2_customer_orders)));
+    System.out.println("relImdN1SupplierLineItem schema: "
+        + relImdN1SupplierLineItem.schema.toString());
+    System.out
+        .println("relImdN2CustomerOrders schema: " + relImdN2CustomerOrders.schema.toString());
+
+    System.out.println("Final schema: " + relImdJoinResult.schema.toString());
 
     jbcntrl.addJob(job_final_join);
 
@@ -174,6 +116,41 @@ public class dbq7 {
 
     return jbcntrl;
 
+  }
+
+  /**
+   * @param jbcntrl
+   * @param nationFilters
+   * @return
+   * @throws IOException
+   */
+  private static Job get_jobs_N2_Customer_Order(JobControl jbcntrl,
+      List<SelectionEntry<String>> nationFilters) throws IOException {
+    // ======
+    // map-side join o(n2) |><| Customer
+    // =========
+    // TODO: this still will have to know about selections and projections
+
+    Configuration job_n2_customers_conf = SelectionFilter.addSelectionsToJob(new Configuration(),
+        ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
+
+    Job job_n2_customer = new Job(ReduceSideJoin.createJob(job_n2_customers_conf, relCustomer,
+        relNations, "NATIONKEY", relImdN2Customer), new ArrayList<Job>());
+    jbcntrl.addJob(job_n2_customer);
+
+    // ======
+    // map-side join Order X [o(n2) |><| Customer]
+    // =========
+    // TODO: this still will have to know about selections and projections
+
+    Configuration job_n2_customer_orders_conf = new Configuration();
+
+    Job job_n2_customer_orders = new Job(ReduceSideJoin.createJob(job_n2_customer_orders_conf,
+        relOrder, relImdN2Customer, "CUSTKEY", relImdN2CustomerOrders), new ArrayList<Job>(
+        Arrays.asList(job_n2_customer)));
+
+    jbcntrl.addJob(job_n2_customer_orders);
+    return job_n2_customer_orders;
   }
 
 }
