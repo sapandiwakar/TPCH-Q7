@@ -31,7 +31,7 @@ public class ReduceSideJoin {
   protected static final String COLUMN_SEPARATOR_RE = "\\|";
   protected static final String COLUMN_SEPARATOR = "|";
 
-  private static final boolean IS_LOCAL = true;
+  private static final boolean IS_LOCAL = false;
   private static final boolean DEBUG = true;
 
   public static class SmallerRelationMapper extends ReduceSideJoinAbstractMapper {
@@ -168,6 +168,10 @@ public class ReduceSideJoin {
 
           // We do INNER join, so if smaller relation not present, we can quit
           // immediately!
+          // TODO: check if somewhere we need non inner joins, as it's valid for
+          // aggregation to show zero values. Probably we add another
+          // param=joinType [inner, left, right, outer] --- preserve empty columns
+
           if (smaller_relation_tuples.size() == 0) {
             return;
           }

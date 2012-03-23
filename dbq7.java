@@ -8,8 +8,8 @@ import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.jobcontrol.*;
-import org.apache.hadoop.mapred.jobcontrol.Job;
 
 import relations.Relation;
 import relations.Schema;
@@ -41,12 +41,58 @@ public class dbq7 {
     // Params
     String nation1 = "FRANCE";
     String nation2 = "GERMANY";
-    
+
     // ======
 
-    JobControl jobs = buildJobs(nation1, nation2);
-    jobs.run();
+    long start = System.currentTimeMillis();
 
+    JobControl jc = buildJobs(nation1, nation2);
+
+    // based on:
+    // http://blog.pfa-labs.com/2010/01/running-jobs-with-depenencies-in.html
+
+    // start the controller in a different thread, no worries as it does that
+    // anyway
+    Thread theController = new Thread(jc);
+    theController.start();
+
+    // poll until everything is done,
+    // in the meantime justs output some status message
+    while (!jc.allFinished()) {
+      System.out.println("Jobs in waiting state: " + jc.getWaitingJobs().size());
+      System.out.println("Jobs in ready state: " + jc.getReadyJobs().size());
+      System.out.println("Jobs in running state: " + jc.getRunningJobs().size());
+      System.out.println("Jobs in success state: " + jc.getSuccessfulJobs().size());
+      System.out.println("Jobs in failed state: " + jc.getFailedJobs().size());
+      System.out.println("\n");
+
+      printTimeElasped(start);
+
+      // sleep 5 seconds
+      try {
+        Thread.sleep(5000);
+      } catch (Exception e) {
+      }
+    }
+
+    if (jc.allFinished())
+      theController.stop();
+    
+    System.out.println("Done. ");
+    printTimeElasped(start);
+
+  }
+
+  /**
+   * @param start
+   * @param jc
+   */
+  private static void printTimeElasped(long start) {
+    // Get elapsed time in milliseconds
+    long elapsedTimeMillis = System.currentTimeMillis() - start;
+    // Get elapsed time in seconds
+    float elapsedTimeMin = elapsedTimeMillis / (60 * 1000F);
+    System.out.println("Time elapsed: " + elapsedTimeMin + " min.");
   }
 
   public static JobControl buildJobs(String nation1, String nation2) throws IOException {
