@@ -108,17 +108,14 @@ public class ReduceSideJoin {
         attrs.deleteCharAt(attrs.length() - 1);
       }
 
-      // DEBUGING
-      try {
-        output.collect(new TextPair(tuple[joinCol], reduceOrder), new TextPair(attrs.toString(),
-            reduceOrder));
-      } catch (ArrayIndexOutOfBoundsException e) {
-        // TODO: handle exception
-        e.printStackTrace();
-        System.out.println("Error at rel=" + relationName + " joinCol=" + joinCol + " for tuple="
-            + Arrays.toString(tuple));
-
-      }
+      // try {
+      output.collect(new TextPair(tuple[joinCol], reduceOrder), new TextPair(attrs.toString(),
+          reduceOrder));
+      /*
+       * } catch (ArrayIndexOutOfBoundsException e) { // TODO: handle exception
+       * e.printStackTrace(); System.out.println("Error at rel=" + relationName
+       * + " joinCol=" + joinCol + " for tuple=" + Arrays.toString(tuple)); }
+       */
     }
   }
 
@@ -170,7 +167,8 @@ public class ReduceSideJoin {
           // immediately!
           // TODO: check if somewhere we need non inner joins, as it's valid for
           // aggregation to show zero values. Probably we add another
-          // param=joinType [inner, left, right, outer] --- preserve empty columns
+          // param=joinType [inner, left, right, outer] --- preserve empty
+          // columns
 
           if (smaller_relation_tuples.size() == 0) {
             return;

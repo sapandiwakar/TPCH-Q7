@@ -2,8 +2,8 @@ package relations;
 
 public class Relation {
 
-  static String inputFilesPrefix = "/team8/input/";
-  static String tmpFilesPrefix = "/team8/temp/";
+  public static String inputFilesPrefix = "/team8/input/";
+  public static String tmpFilesPrefix = "/team8/temp/";
 
   public Schema schema = null;
   public String storageFileName;
