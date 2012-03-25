@@ -96,6 +96,7 @@ public class TextPair implements WritableComparable<TextPair> {
 			}
 		}
 
+		@SuppressWarnings("rawtypes")
 		@Override
 		public int compare(WritableComparable a, WritableComparable b) {
 			if (a instanceof TextPair && b instanceof TextPair) {

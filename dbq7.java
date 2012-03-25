@@ -3,33 +3,144 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import operators.group.Group.GroupBy;
-import operators.join.SimpleJoin.ReduceSideJoin;
-import operators.selection.DateSelectionFilter;
+import operators.groupby.GroupBy;
+import operators.join.HadoopJoin;
 import operators.selection.SelectionEntry;
 import operators.selection.SelectionFilter;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.mapred.JobClient;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.jobcontrol.*;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
 
 import relations.Relation;
 import relations.Schema;
 
-public class dbq7 {
+public class dbq7 extends Configured implements Tool {
 
-  // input Relations
+  /** input relations */
   static Relation relSupplier, relNations, relLineItem, relCustomer, relOrder;
 
-  // Intermediate result files
+  /** intermediate result relations */
   static Relation relImdN1Supplier, relImdN1SupplierLineItem, relImdN2Customer,
       relImdN2CustomerOrders, relImdJoinResult;
 
-  private static Relation relImdGroupByResult;
+  /** result relation */
+  static Relation relQueryResult;
 
-  static final boolean DEBUG = false;
+  /** monitor interval */
+  static int monitorInterval = 5000;
 
-  private static void initRelations() {
+  /** force reduce side join */
+  static boolean forceReduceSideJoin = false;
+
+  public static void main(String[] args) throws Exception {
+    int res = ToolRunner.run(new Configuration(), new dbq7(), args);
+    System.exit(res);
+  }
+
+  private int printUsage() {
+    System.out.println("dbq7 -i <input> -o <output> <nation1> <nation2> "
+        + "[-r] [-m <memoryjoin_threshold>]");
+    ToolRunner.printGenericCommandUsage(System.out);
+    return -1;
+  }
+
+  @Override
+  public int run(String[] args) throws Exception {
+    List<String> other_args = new ArrayList<String>();
+    for (int i = 0; i < args.length; ++i) {
+      try {
+        if ("-i".equals(args[i])) {
+          i++;
+          if (!args[i].endsWith("/")) {
+            args[i] = args[i] + "/";
+          }
+          Relation.setInputPath(args[i]);
+        } else if ("-o".equals(args[i])) {
+          i++;
+          if (!args[i].endsWith("/")) {
+            args[i] = args[i] + "/";
+          }
+          Relation.setTmpPath(args[i] + "temp/");
+          Relation.setOutputPath(args[i] + "out/");
+        } else if ("-f".equals(args[i])) {
+          forceReduceSideJoin = true;
+        } else if ("-o".equals(args[i])) {
+          i++;
+          HadoopJoin.setMemoryBackedThreshold(Integer.parseInt(args[i]));
+        } else {
+          other_args.add(args[i]);
+        }
+      } catch (NumberFormatException except) {
+        System.out.println("ERROR: Integer expected instead of " + args[i]);
+        return printUsage();
+      } catch (ArrayIndexOutOfBoundsException except) {
+        System.out.println("ERROR: Required parameter missing from " + args[i - 1]);
+        return printUsage();
+      }
+    }
+
+    // schema config
+    schemaConfig();
+
+    // mMake sure there are exactly 2 parameters left.
+    if (other_args.size() != 2) {
+      System.out.println("ERROR: Wrong number of parameters: " + other_args.size()
+          + " instead of 2.");
+      return printUsage();
+    }
+
+    // nation parammeters
+    String nation1 = other_args.get(0);
+    String nation2 = other_args.get(1);
+
+    // Phase 1: Nation1 |><| Supplier and Nation2 |><| Customer
+    Job n1_supp = new Job(nation1_Supplier(nation1, nation2));
+    Job n2_cust = new Job(nation2_Customer(nation1, nation2));
+
+    JobControl jobs = new JobControl("jbcntrl");
+    jobs.addJob(n1_supp);
+    jobs.addJob(n2_cust);
+
+    Thread jobClient = new Thread(jobs);
+    jobClient.start();
+
+    while (!jobs.allFinished()) {
+      jobStatus(jobs);
+    }
+
+    // Phase 2: N1Supp |><| LineItem and N2Cust |><| Orders
+    Job n1_supp_lineitem = new Job(n1Supp_LineItem());
+    Job n2_cust_orders = new Job(n2Cust_Orders());
+
+    jobs.addJob(n1_supp_lineitem);
+    jobs.addJob(n2_cust_orders);
+
+    while (!jobs.allFinished()) {
+      jobStatus(jobs);
+    }
+
+    // Phase 3: Final join and Group by
+    Job finalJoin = new Job(finalJoin());
+    Job groupOrder = new Job(groupBy(nation1, nation2),
+        new ArrayList<Job>(Arrays.asList(finalJoin)));
+
+    jobs.addJob(finalJoin);
+    jobs.addJob(groupOrder);
+
+    while (!jobs.allFinished()) {
+      jobStatus(jobs);
+    }
+
+    jobs.stop();
+
+    return 0;
+  }
+
+  public static void schemaConfig() {
     // input Relations
     relSupplier = new Relation(new Schema(Schema.SUPPLIER_FIELDS), "supplier.tbl");
     relNations = new Relation(new Schema(Schema.NATIONS_FIELDS), "nation.tbl");
@@ -41,226 +152,121 @@ public class dbq7 {
     relImdN1Supplier = new Relation("ImdN1Supplier");
     relImdN1SupplierLineItem = new Relation("ImdN1SupplierLineItem");
     relImdN2Customer = new Relation("ImdN2Customer");
-    relImdN2CustomerOrders = new Relation("N2CustomerOrders");
+    relImdN2CustomerOrders = new Relation("ImdN2CustomerOrders");
     relImdJoinResult = new Relation("ImdJoinResult");
 
-    relImdGroupByResult = new Relation("ImdResultGroupBy");
-
+    // Result file
+    relQueryResult = new Relation();
   }
 
-  /**
-   * @param args
-   *          (input dir, nation1, nation2)
-   * @throws IOException
-   */
-  public static void main(String[] args) throws IOException {
-    // ======
-    // Params
+  /** Nation1 |><| Supplier job configuration */
+  public static JobConf nation1_Supplier(String nation1, String nation2) throws IOException {
+    @SuppressWarnings("unchecked")
+    List<SelectionEntry<String>> nationFilters = Arrays.asList(new SelectionEntry<String>("NAME",
+        nation1, SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER + Schema.STRING
+            + SelectionEntry.CTRL_DELIMITER + "="), new SelectionEntry<String>("NAME", nation2,
+        SelectionFilter.OR + SelectionEntry.CTRL_DELIMITER + Schema.STRING
+            + SelectionEntry.CTRL_DELIMITER + "="));
 
-    System.out.println("args:" + Arrays.asList(args));
+    String nation1Alias = "n1_";
+    List<String> nation1Projection = Arrays.asList("NAME", nation1Alias);
+    List<String> supplierProjection = Arrays.asList("SUPPKEY", "");
 
-    if (args.length > 0) {
-      Relation.inputFilesPrefix = args[0];
-      System.out.println("Using input path:" + Relation.inputFilesPrefix);
+    return HadoopJoin.join(relNations, relSupplier, relImdN1Supplier, nationFilters, null,
+        nation1Projection, supplierProjection, "NATIONKEY", forceReduceSideJoin);
+  }
+
+  /** N1Supp |><| LineItem job configuration */
+  public static JobConf n1Supp_LineItem() throws IOException {
+    @SuppressWarnings("unchecked")
+    List<SelectionEntry<String>> shipdateFilters = Arrays.asList(new SelectionEntry<String>(
+        "SHIPDATE", "1995-01-01", SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER + Schema.DATE
+            + SelectionEntry.CTRL_DELIMITER + ">="), new SelectionEntry<String>("SHIPDATE",
+        "1996-12-31", SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER + Schema.DATE
+            + SelectionEntry.CTRL_DELIMITER + "<="));
+
+    String nation1Alias = "n1_";
+    List<String> imdNation1Projection = Arrays.asList(nation1Alias + "NAME", "");
+    List<String> lineItemProjection = Arrays.asList("ORDERKEY", "EXTENDEDPRICE", "DISCOUNT",
+        "SHIPDATE", "");
+
+    return HadoopJoin.join(relImdN1Supplier, relLineItem, relImdN1SupplierLineItem, null,
+        shipdateFilters, imdNation1Projection, lineItemProjection, "SUPPKEY", forceReduceSideJoin);
+  }
+
+  /** Nation2 |><| Customer job configuration */
+  public static JobConf nation2_Customer(String nation1, String nation2) throws IOException {
+    @SuppressWarnings("unchecked")
+    List<SelectionEntry<String>> nationFilters = Arrays.asList(new SelectionEntry<String>("NAME",
+        nation1, SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER + Schema.STRING
+            + SelectionEntry.CTRL_DELIMITER + "="), new SelectionEntry<String>("NAME", nation2,
+        SelectionFilter.OR + SelectionEntry.CTRL_DELIMITER + Schema.STRING
+            + SelectionEntry.CTRL_DELIMITER + "="));
+
+    String nation2Alias = "n2_";
+    List<String> nation2Projection = Arrays.asList("NAME", nation2Alias);
+    List<String> customerProjection = Arrays.asList("CUSTKEY", "");
+
+    return HadoopJoin.join(relNations, relCustomer, relImdN2Customer, nationFilters, null,
+        nation2Projection, customerProjection, "NATIONKEY", forceReduceSideJoin);
+  }
+
+  /** N2Cust |><| Orders job configuration */
+  public static JobConf n2Cust_Orders() throws IOException {
+    String nation2Alias = "n2_";
+    List<String> imdNation2Projection = Arrays.asList(nation2Alias + "NAME", "");
+    List<String> orderProjection = Arrays.asList("ORDERKEY", "");
+
+    return HadoopJoin.join(relImdN2Customer, relOrder, relImdN2CustomerOrders, null, null,
+        imdNation2Projection, orderProjection, "CUSTKEY", forceReduceSideJoin);
+  }
+
+  /** FinalJoin job configuration */
+  public static JobConf finalJoin() throws IOException {
+    String nation1Alias = "n1_";
+    String nation2Alias = "n2_";
+    List<String> imdN1LineItemProjection = Arrays.asList(nation1Alias + "NAME", "EXTENDEDPRICE",
+        "DISCOUNT", "SHIPDATE", "");
+    List<String> imdNation2Projection = Arrays.asList(nation2Alias + "NAME", "");
+
+    return HadoopJoin.join(relImdN1SupplierLineItem, relImdN2CustomerOrders, relImdJoinResult,
+        null, null, imdN1LineItemProjection, imdNation2Projection, "ORDERKEY", forceReduceSideJoin);
+  }
+
+  /** GroupBy job configuration */
+  public static JobConf groupBy(String nation1, String nation2) throws IOException {
+    String nation1Alias = "n1_";
+    String nation2Alias = "n2_";
+    List<String> groupByFields = Arrays.asList(nation1Alias + "NAME", nation2Alias + "NAME",
+        "SHIPDATE");
+
+    @SuppressWarnings("unchecked")
+    List<SelectionEntry<String>> nationFilters = Arrays.asList(new SelectionEntry<String>(
+        nation1Alias + "NAME", nation1, SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER
+            + Schema.STRING + SelectionEntry.CTRL_DELIMITER + "="), new SelectionEntry<String>(
+        nation2Alias + "NAME", nation2, SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER
+            + Schema.STRING + SelectionEntry.CTRL_DELIMITER + "="), new SelectionEntry<String>(
+        nation1Alias + "NAME", nation2, SelectionFilter.OR + SelectionEntry.CTRL_DELIMITER
+            + Schema.STRING + SelectionEntry.CTRL_DELIMITER + "="), new SelectionEntry<String>(
+        nation2Alias + "NAME", nation1, SelectionFilter.AND + SelectionEntry.CTRL_DELIMITER
+            + Schema.STRING + SelectionEntry.CTRL_DELIMITER + "="));
+
+    return GroupBy.createJob(new Configuration(), relImdJoinResult, nationFilters, null,
+        groupByFields, relQueryResult);
+  }
+
+  public static void jobStatus(JobControl jobs) {
+    System.out.println("Jobs in waiting state: " + jobs.getWaitingJobs().size());
+    System.out.println("Jobs in ready state: " + jobs.getReadyJobs().size());
+    System.out.println("Jobs in running state: " + jobs.getRunningJobs().size());
+    System.out.println("Jobs in success state: " + jobs.getSuccessfulJobs().size());
+    System.out.println("Jobs in failed state: " + jobs.getFailedJobs().size());
+    System.out.println("\n");
+
+    try {
+      Thread.sleep(monitorInterval);
+    } catch (Exception e) {
+      e.printStackTrace();
     }
-    initRelations();
-
-    String nation1 = "FRANCE";
-    String nation2 = "GERMANY";
-
-    if (args.length > 2) {
-      nation1 = args[1];
-      nation2 = args[2];
-    }
-    System.out.println("Nation1=" + nation1 + " NATION2=" + nation2);
-
-    // ======
-
-    long start = System.currentTimeMillis();
-
-    JobControl jc = buildJobs(nation1, nation2);
-
-    // based on:
-    // http://blog.pfa-labs.com/2010/01/running-jobs-with-depenencies-in.html
-
-    // start the controller in a different thread, no worries as it does that
-    // anyway
-    Thread theController = new Thread(jc);
-    theController.start();
-
-    // poll until everything is done,
-    // in the meantime justs output some status message
-    while (!jc.allFinished()) {
-      System.out.println("Jobs in waiting state: " + jc.getWaitingJobs().size());
-      System.out.println("Jobs in ready state: " + jc.getReadyJobs().size());
-      System.out.println("Jobs in running state: " + jc.getRunningJobs().size());
-      System.out.println("Jobs in success state: " + jc.getSuccessfulJobs().size());
-      System.out.println("Jobs in failed state: " + jc.getFailedJobs().size());
-      System.out.println("\n");
-
-      printTimeElasped(start);
-
-      // sleep 5 seconds
-      try {
-        Thread.sleep(5000);
-      } catch (Exception e) {
-      }
-    }
-
-    if (jc.allFinished())
-      theController.stop();
-
-    System.out.println("Done. ");
-    printTimeElasped(start);
-
   }
-
-  /**
-   * @param start
-   * @param jc
-   */
-  private static void printTimeElasped(long start) {
-    // Get elapsed time in milliseconds
-    long elapsedTimeMillis = System.currentTimeMillis() - start;
-    // Get elapsed time in seconds
-    float elapsedTimeMin = elapsedTimeMillis / (60 * 1000F);
-    System.out.println("Time elapsed: " + elapsedTimeMin + " min.");
-  }
-
-  @SuppressWarnings("unchecked")
-  private static List<SelectionEntry<String>> getWeakNationFilters(String nation1, String nation2) {
-    return Arrays.asList(new SelectionEntry<String>("NAME", nation1), new SelectionEntry<String>(
-        "NAME", nation2));
-  }
-
-  public static JobControl buildJobs(String nation1, String nation2) throws IOException {
-
-    // TODO: maybe try compressing intermediate results? but here I guess
-    // network is quote fast and disk too?.
-
-    JobControl jbcntrl = new JobControl("jbcntrl");
-
-    Job job_n1_suppliers_lineitem = get_jobs_N1_Supplier_Lineitem(nation1, nation2, jbcntrl);
-    Job job_n2_customer_orders = get_jobs_N2_Customer_Order(jbcntrl, nation1, nation2);
-
-    // =============================
-    // finally join the two huge branches
-    // ========================
-
-    // TODO: Add Filter
-    // TODO: refactor selections
-    Job job_final_join = new Job(ReduceSideJoin.createJob(new Configuration(),
-        relImdN1SupplierLineItem, relImdN2CustomerOrders, "ORDERKEY", relImdJoinResult),
-        new ArrayList<Job>(Arrays.asList(job_n1_suppliers_lineitem, job_n2_customer_orders)));
-
-    // TODO: add final filtering by both N1 and N2! : This could be inReduce
-    // filter
-    // TODO: add projections and simple column transformation formulas to make it work!!!
-
-    if (DEBUG) {
-      System.out.println("relImdN1SupplierLineItem schema: "
-          + relImdN1SupplierLineItem.schema.toString());
-      System.out.println("relImdN2CustomerOrders schema: "
-          + relImdN2CustomerOrders.schema.toString());
-      System.out.println("Final schema: " + relImdJoinResult.schema.toString());
-    }
-    jbcntrl.addJob(job_final_join);
-
-    // TODO: add group_by and aggregation
-    // TODO: project sum(volume) as revenue
-    
-    Job group_by = new Job(GroupBy.getGroupByConf(new Configuration(),
-        relImdJoinResult.storageFileName, relImdJoinResult.schema.getColumnIndex("supp_nation"),
-        relImdJoinResult.schema.getColumnIndex("cust_nation"),
-        relImdJoinResult.schema.getColumnIndex("l_year"),
-        relImdJoinResult.schema.getColumnIndex("volume"), relImdGroupByResult.storageFileName));
-    group_by.addDependingJob(job_final_join);
-    jbcntrl.addJob(group_by);
-
-    /**
-     * TODO: This filter we will have to enforce once more again after n2 and n1
-     * was joined together!!! ( (n1.n_name = '[NATION1]' and n2.n_name =
-     * '[NATION2]') or (n1.n_name = '[NATION2]' and n2.n_name = '[NATION1]') )
-     */
-
-    return jbcntrl;
-
-  }
-
-  /**
-   * @param nation1
-   * @param nation2
-   * @param jbcntrl
-   * @return
-   * @throws IOException
-   */
-  private static Job get_jobs_N1_Supplier_Lineitem(String nation1, String nation2,
-      JobControl jbcntrl) throws IOException {
-
-    // ======
-    // map-side join o(n1) |><| supplier
-    // =========
-    // TODO: this still will have to know about selections and projections
-
-    // add selection: TODO: for now default selection type is OR
-
-    List<SelectionEntry<String>> nationFilters = getWeakNationFilters(nation1, nation2);
-    Configuration job_n1_suppliers_conf = SelectionFilter.addSelectionsToJob(new Configuration(),
-        ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
-
-    Job job_n1_suppliers = new Job(ReduceSideJoin.createJob(job_n1_suppliers_conf, relSupplier,
-        relNations, "NATIONKEY", relImdN1Supplier), new ArrayList<Job>());
-    jbcntrl.addJob(job_n1_suppliers);
-
-    // ===============================================
-    // map-side join LineItem with [o(n1) |><| supplier]
-    // ==================================================
-    Configuration job_n1_suppliers_lineitem_conf = DateSelectionFilter.addSelection(
-        new Configuration(), relLineItem, "SHIPDATE");
-
-    Job job_n1_suppliers_lineitem = new Job(ReduceSideJoin.createJob(
-        job_n1_suppliers_lineitem_conf, relLineItem, relImdN1Supplier, "SUPPKEY",
-        relImdN1SupplierLineItem), new ArrayList<Job>(Arrays.asList(job_n1_suppliers)));
-    // TODO: it is failing here!!!
-    jbcntrl.addJob(job_n1_suppliers_lineitem);
-    return job_n1_suppliers_lineitem;
-  }
-
-  /**
-   * @param jbcntrl
-   * @param nationFilters
-   * @return
-   * @throws IOException
-   */
-  private static Job get_jobs_N2_Customer_Order(JobControl jbcntrl, String nation1, String nation2)
-      throws IOException {
-
-    // ======
-    // map-side join o(n2) |><| Customer
-    // =========
-    // TODO: this still will have to know about selections and projections
-
-    List<SelectionEntry<String>> nationFilters = getWeakNationFilters(nation1, nation2);
-    Configuration job_n2_customers_conf = SelectionFilter.addSelectionsToJob(new Configuration(),
-        ReduceSideJoin.PREFIX_JOIN_SMALLER, nationFilters, relNations.schema);
-
-    Job job_n2_customer = new Job(ReduceSideJoin.createJob(job_n2_customers_conf, relCustomer,
-        relNations, "NATIONKEY", relImdN2Customer), new ArrayList<Job>());
-    jbcntrl.addJob(job_n2_customer);
-
-    // ======
-    // map-side join Order X [o(n2) |><| Customer]
-    // =========
-    // TODO: this still will have to know about selections and projections
-
-    Configuration job_n2_customer_orders_conf = new Configuration();
-
-    Job job_n2_customer_orders = new Job(ReduceSideJoin.createJob(job_n2_customer_orders_conf,
-        relOrder, relImdN2Customer, "CUSTKEY", relImdN2CustomerOrders), new ArrayList<Job>(
-        Arrays.asList(job_n2_customer)));
-
-    jbcntrl.addJob(job_n2_customer_orders);
-    return job_n2_customer_orders;
-  }
-
 }

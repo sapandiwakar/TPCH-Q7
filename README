@@ -17,6 +17,9 @@ cd ~/src
 mkdir db7_classes
 
 == put input
+hadoop dfs -mkdir /team8/input20
+hadoop dfs -put ~/factor20/* /team8/input20/
+
 hadoop dfs -rmr /team8/input/*
 hadoop dfs -put ~/factor10/* /team8/input/
 
@@ -25,7 +28,7 @@ cd ~/src
 javac -classpath /opt/hadoop_install/hadoop/hadoop-0.20.2-core.jar -d db7_classes relations/*.java operators/*/*.java operators/*/*/*.java dbq7.java
 jar -cvf dbq7.jar -C db7_classes/ .
 hadoop dfs -rmr /team8/temp/
-hadoop jar dbq7.jar dbq7
+hadoop jar dbq7.jar dbq7 /team8/input20/
 
 === See results
 hadoop dfs -ls /team8/temp/

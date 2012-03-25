@@ -1,160 +1,138 @@
 package operators.selection;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Stack;
 
 import relations.Schema;
-
-import java.util.Map.Entry;
-
 import org.apache.hadoop.conf.Configuration;
 
-public class SelectionFilter implements SelectionFilterInterface {
+public class SelectionFilter {
 
-  private static final String CONF_KEY_NCOLS = "selection_NCols";
-  private static final String CONF_KEY_N_FILTER_GROUPS = "selection_ngroups_";
-  private static final String CONF_GROUP_PREFIX = "_group_";
+	/** logic operators */
+	public static final int AND = 1;
+	public static final int OR = 0;
 
-  /* e.g. AND */
-  private static final String CONF_GROUP_OPERATOR = "_groupop_";
-  /* e.g. OR */
-  private static final String CONF_GROUP_INTRA_OPERATOR = "_groupopintra_";
+	/** parameters passed to Mapred job */
+	private static final String CONF_KEY_VALUES = "selection_values";
+	private static final String CONF_KEY_COLUMNS = "selection_cols";
+	private static final String CONF_KEY_CTRLS = "selection_ctrls";
 
-  private static final String CONF_KEY_VALUES = "selection_values";
-  private static final String CONF_KEY_COLUMNS = "selection_cols";
+	/** selection list*/
+	ArrayList<SelectionEntry<Integer>> selectionArguments;	
 
-  ArrayList<SelectionEntry<Integer>> selectionArguments;
-  ArrayList<ArrayList<SelectionEntry<Integer>>> selectionArgumentsGroup;
+	/**
+	 * Selection implementation that checks for equality.
+	 * logical expression computation is applying 
+	 * 
+	 * @param tuple
+	 * @return tuple is selected or not
+	 */
 
+	public boolean checkSelection(String[] tuple) {	
+		boolean isSelected = true;
+		
+		Stack<Boolean> operand = new Stack<Boolean>();
+		
+		operand.push(isSelected);
 
-  String filterType = "OR";
-  String innerFilterType = "AND";
-  
+		for (SelectionEntry<Integer> entry : selectionArguments) {
+			if (entry.getLogicType() == AND) {
+				boolean topOperand = operand.pop();
+				operand.push(topOperand && entry.isSelected(tuple[entry.getKey()]));
+			} else {
+				operand.push(entry.isSelected(tuple[entry.getKey()]));
+			}
+		}
+		
+		isSelected = operand.pop();
+		while (!operand.isEmpty()) {
+			isSelected = operand.pop() || isSelected;
+		}
 
-  // TODO: we need relation name too!!!
+		return isSelected;
+	}
 
-  /**
-   * very simple selection implementation that checks for equality. TODO: add
-   * ORs etc
-   * 
-   * @param tuple
-   * @return
-   */
+	/**
+	 * Constructor given Configuration. as join have multiple relations we add
+	 * relationPrefix field
+	 */
+	public SelectionFilter(Configuration conf, String relationPrefix) { 
+		String[] selectionValues = conf.getStrings(relationPrefix + CONF_KEY_VALUES, new String[] {});
+		String[] sSelectionCols = conf.getStrings(relationPrefix + CONF_KEY_COLUMNS, new String[] {});
+		String[] selectionCtrls = conf.getStrings(relationPrefix + CONF_KEY_CTRLS, new String[] {});
 
-  public boolean checkSelection(String[] tuple) {
-    
-    if ("OR".equals(filterType)) {
-      for (Entry<Integer, String> entry : selectionArguments) {
+		selectionArguments = new ArrayList<SelectionEntry<Integer>>();
 
-        // System.out.println(tuple[entry.getKey()] + " vs " + entry.getValue()
-        // + " tuple: " + new ArrayList<String>(Arrays.asList(tuple)));
+		for (int i = 0; i < selectionValues.length; i++) {
+			selectionArguments.add(new SelectionEntry<Integer>(Integer.parseInt(sSelectionCols[i]),
+					selectionValues[i], selectionCtrls[i]));
+		}
+	}
 
-        if (tuple[entry.getKey()].equals(entry.getValue()))
-          return true;
-      }
-    }
-    if ("AND".equals(filterType)) {
-      for (Entry<Integer, String> entry : selectionArguments) {
-        if (!tuple[entry.getKey()].equals(entry.getValue()))
-          return false;
-      }
-      return true;
-    }
-    return false || selectionArguments.size() == 0;
-  }
+	public static Configuration addSelectionsToJob(Configuration conf, String relationPrefix,
+			List<SelectionEntry<String>> selections, Schema schema) {
+		if (selections != null) {
+			System.out.println("SelectionFilterCreate n = " + selections.size());
 
-  /**
-   * Constructor given Configuration. as join have multiple relations we add
-   * relationPrefix field
-   * 
-   */
-  public SelectionFilter(Configuration conf, String relationPrefix) {
-    super();
+			// using schema convert column names into their indexes
+			List<String> columnIndexes = new ArrayList<String>();
+			List<String> values = new ArrayList<String>();
+			List<String> ctrls = new ArrayList<String>();
 
-    int nSelectionCols = conf.getInt(relationPrefix + CONF_KEY_NCOLS, 0);
-    String[] selectionValues = conf.getStrings(relationPrefix + CONF_KEY_VALUES, new String[] {});
-    String[] sSelectionCols = conf.getStrings(relationPrefix + CONF_KEY_COLUMNS, new String[] {});
+			for (SelectionEntry<String> entry : selections) {
+				columnIndexes.add(schema.getColumnIndex(entry.getKey()) + "");
+				values.add(entry.getValue());
+				ctrls.add(entry.getCtrl());
+			}
 
-    selectionArguments = new ArrayList<SelectionEntry<Integer>>();
-
-    // System.out.println("SelectionFilter n=" + nSelectionCols);
-
-    for (int i = 0; i < nSelectionCols; i++) {
-      System.out.println("SelectionFilter key=" + sSelectionCols[i] + "--> " + selectionValues[i]);
-
-      selectionArguments.add(new SelectionEntry<Integer>(Integer.parseInt(sSelectionCols[i]),
-          selectionValues[i]));
-    }
-  }
-
-  /**
-   * TODO: Combined filters save these conf params:
-   * 
-   * n_filter_groups = 2 groupOperator = AND intraGroupOperator = OR
-   * 
-   * n_ncols relation_prefix (for map - input name); reduce - output name
-   * 
-   * @param conf
-   * @param relationPrefix
-   * @param nationFilters
-   * @param schema
-   * @return
-   */
-
-  // TODO: shall use relation name instead
-  public static Configuration addMultipleSelectionsToJob(Configuration conf, String relationPrefix,
-      List<List<SelectionEntry<String>>> filterGroups, String groupOperator,
-      String intraGroupOperator, Schema schema) {
-
-    conf.setInt(relationPrefix + CONF_KEY_N_FILTER_GROUPS, filterGroups.size());
-    
-    //conf.set(relationPrefix + CONF_GROUP_OPERATOR, groupOperator);
-    //conf.set(relationPrefix + CONF_GROUP_INTRA_OPERATOR, intraGroupOperator);
-
-    int i = 0;
-    for (List<SelectionEntry<String>> filterGroup : filterGroups) {
-      String groupPrefix = CONF_GROUP_PREFIX + i++;
-
-      conf.setInt(relationPrefix + groupPrefix + CONF_KEY_NCOLS, filterGroup.size());
-
-      System.out.println("SelectionFilterCreate [] n=" + filterGroup.size());
-
-      // using schema convert column names into their indexes
-      List<String> columnIndexes = new ArrayList<String>();
-      List<String> values = new ArrayList<String>();
-
-      for (SelectionEntry<String> entry : filterGroup) {
-        columnIndexes.add(schema.getColumnIndex(entry.getKey()) + "");
-        values.add(entry.getValue());
-
-      }
-      conf.setStrings(relationPrefix + groupPrefix + CONF_KEY_COLUMNS,
-          columnIndexes.toArray(new String[0]));
-      conf.setStrings(relationPrefix + groupPrefix + CONF_KEY_VALUES, values.toArray(new String[0]));
-    }
-
-    return conf;
-  }
-
-  // TODO: shall use relation name instead
-  public static Configuration addSelectionsToJob(Configuration conf, String relationPrefix,
-      List<SelectionEntry<String>> nationFilters, Schema schema) {
-    conf.setInt(relationPrefix + CONF_KEY_NCOLS, nationFilters.size());
-
-    System.out.println("SelectionFilterCreate n=" + nationFilters.size());
-
-    // using schema convert column names into their indexes
-    List<String> columnIndexes = new ArrayList<String>();
-    List<String> values = new ArrayList<String>();
-
-    for (SelectionEntry<String> entry : nationFilters) {
-      columnIndexes.add(schema.getColumnIndex(entry.getKey()) + "");
-      values.add(entry.getValue());
-
-    }
-    conf.setStrings(relationPrefix + CONF_KEY_COLUMNS, columnIndexes.toArray(new String[0]));
-    conf.setStrings(relationPrefix + CONF_KEY_VALUES, values.toArray(new String[0]));
-
-    return conf;
-  }
+			conf.setStrings(relationPrefix + CONF_KEY_COLUMNS, columnIndexes.toArray(new String[0]));
+			conf.setStrings(relationPrefix + CONF_KEY_VALUES, values.toArray(new String[0]));
+			conf.setStrings(relationPrefix + CONF_KEY_CTRLS, ctrls.toArray(new String[0]));
+		}
+		return conf;
+	}
+	
+	// unit test
+	public static void main(String[] args) {
+		String relationPrefix = "prefix_";
+		Schema lineItem = new Schema(Schema.LINEITEM_FIELDS);
+		lineItem.setDataType("SHIPDATE", Schema.DATE);
+		@SuppressWarnings("unchecked")
+		List<SelectionEntry<String>> shipdateFilters = Arrays.asList(
+				new SelectionEntry<String>("SHIPDATE", "1995-01-01", SelectionFilter.AND + 
+						SelectionEntry.CTRL_DELIMITER + Schema.DATE +
+						SelectionEntry.CTRL_DELIMITER + ">="), 
+				new SelectionEntry<String>("SHIPDATE", "1996-12-31", SelectionFilter.AND +
+						SelectionEntry.CTRL_DELIMITER + Schema.DATE +
+						SelectionEntry.CTRL_DELIMITER + "<="),
+				new SelectionEntry<String>("COMMENT", "comm1", SelectionFilter.OR +
+						SelectionEntry.CTRL_DELIMITER + Schema.STRING +
+						SelectionEntry.CTRL_DELIMITER + "="),
+				new SelectionEntry<String>("QUANTITY", "1", SelectionFilter.AND +
+						SelectionEntry.CTRL_DELIMITER + Schema.STRING +
+						SelectionEntry.CTRL_DELIMITER + "="));
+		
+		Configuration conf = SelectionFilter.addSelectionsToJob(new Configuration(), relationPrefix, shipdateFilters, lineItem);
+		
+		SelectionFilter selection = new SelectionFilter(conf, relationPrefix);
+		
+		String[] tuple = ("O|P|S|L|Q|E|D|T|R|L|1995-01-01|C|R|S|S|comm2").split("\\|");
+		assert(selection.checkSelection(tuple) == true);
+		
+		tuple = ("O|P|S|L|Q|E|D|T|R|L|1996-12-31|C|R|S|S|comm2").split("\\|");
+		assert(selection.checkSelection(tuple) == true);
+		
+		tuple = ("O|P|S|L|Q|E|D|T|R|L|1995-11-11|C|R|S|S|comm2").split("\\|");
+		assert(selection.checkSelection(tuple) == true);
+		
+		tuple = ("O|P|S|L|1|E|D|T|R|L|1997-01-01|C|R|S|S|comm1").split("\\|");
+		assert(selection.checkSelection(tuple) == true);
+		
+		tuple = ("O|P|S|L|Q|E|D|T|R|L|1994-12-31|C|R|S|S|comm1").split("\\|");
+		assert(selection.checkSelection(tuple) == false);
+		
+		System.out.println("All Tests OK");
+	}
 }

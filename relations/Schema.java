@@ -1,6 +1,7 @@
 package relations;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Collections;
 import java.util.ArrayList;
@@ -13,75 +14,120 @@ import org.apache.hadoop.io.Text;
  * rows.
  */
 public class Schema {
-	// Constants
-
+	/** Schema hard code constants */
 	public static List<String> NATIONS_FIELDS = Arrays.asList(
-            "NATIONKEY", "NAME", "REGIONKEY", "COMMENT" );
-
+			"NATIONKEY", "NAME", "REGIONKEY", "COMMENT" );
 	public static List<String> SUPPLIER_FIELDS = Arrays.asList(
-            "SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+			"SUPPKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
 			"ACCTBAL", "COMMENT" );
-
 	public static List<String> CUSTOMER_FIELDS = Arrays.asList(
-                "CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
+			"CUSTKEY", "NAME", "ADDRESS", "NATIONKEY", "PHONE",
 			"ACCTBAL", "MKTSEGMENT", "COMMENT" );
-
 	public static List<String> LINEITEM_FIELDS = Arrays.asList(
-                        "ORDERKEY", "PARTKEY", "SUPPKEY", "LINENUMBER",
+			"ORDERKEY", "PARTKEY", "SUPPKEY", "LINENUMBER",
 			"QUANTITY", "EXTENDEDPRICE", "DISCOUNT", "TAX", "RETURNFLAG",
-                        "LINESTATUS", "SHIPDATE", "COMMITDATE", "RECEIPTDATE",
-                        "SHIPINSTRUCT", "SHIPMODE", "COMMENT");
-        
-        public static List<String> ORDERS_FIELDS = Arrays.asList( "ORDERKEY",
-            "CUSTKEY", "ORDERSTATUS", "TOTALPRICE", "ORDERDATE", "ORDERPRIORITY",
-            "CLERK", "SHIPPRIORITY", "COMMENT");
+			"LINESTATUS", "SHIPDATE", "COMMITDATE", "RECEIPTDATE",
+			"SHIPINSTRUCT", "SHIPMODE", "COMMENT");
+	public static List<String> ORDERS_FIELDS = Arrays.asList( "ORDERKEY",
+			"CUSTKEY", "ORDERSTATUS", "TOTALPRICE", "ORDERDATE", "ORDERPRIORITY",
+			"CLERK", "SHIPPRIORITY", "COMMENT");
+	public static List<String> N1_SUPPLIER_FIELDS = Arrays.asList("NAME", 
+			"SUPPKEY");
+	public static List<String> N1_SUPPLIER_LINEITEM_FIELDS = Arrays.asList(
+			"NAME", "ORDERKEY", "EXTENDEDPRICE", "DISCOUNT", "SHIPDATE");
 
+	/** Constants */
+	public static final String COLUMN_SEPARATOR_RE = "\\|";
+	public static final String COLUMN_SEPARATOR = "|";
+	public static final String DATE_FORMAT = "yyyy-MM-dd";
+	
+	/** Data types */
+	public static final int STRING = 0;
+	public static final int INT = 1;
+	public static final int DOUBLE = 2;
+	public static final int DATE = 3;	
+	
+	/** schema fields */
+	private List<String> _schema;
+	
+	/** schema fields datatype*/
+	protected HashMap<String, Integer> _fieldsDataType;
+	
 	/**
 	 * Create a schema from a list of column names.
-	 * 
-	 * Our database doesn't care what _type_ of relations is stored in columns;
-	 * it's all stored as strings.
+	 * by default everything is STRING
 	 */
 	public Schema(List<String> schema) {
 		_schema = schema;
+		
+		_fieldsDataType = new HashMap<String, Integer>();
+		for (String field : _schema) {
+			_fieldsDataType.put(field, STRING);
+		}
+	}
+	
+	/** Create a schema from a list of column names and types */
+	public Schema(List<String> schema, HashMap<String, Integer> fieldsDataType) {
+		_schema = schema;
+		_fieldsDataType = fieldsDataType;
+	}
+	
+	public int setDataType(String field, int dataType) {
+		return _fieldsDataType.put(field, dataType);
+	}
+	
+	/** @return data type of field */
+	public int getDataType(int fieldIndex) {
+		return _fieldsDataType.get(_schema.get(fieldIndex));
+	}
+	
+	/** @return data type of field */
+	public int getDataType(String field) {
+		return _fieldsDataType.get(field);
+	}
+	
+	/** @return schema fields */
+	public List<String> getFields() {
+		return _schema;
 	}
 
 	/** Create a new schema as a projection of the current schema. */
-	public Schema projection(List<Integer> columns) {
-		ArrayList<String> proj = new ArrayList<String>(columns.size());
-		for (Integer col : columns)
-			proj.add(_schema.get(col));
-		return new Schema(proj);
+	public Schema projection(List<String> projection) {
+		// Get alias
+		String alias = projection.get(projection.size()-1);
+		
+		HashMap<String, Integer> fieldsDataType = new HashMap<String, Integer>();
+		ArrayList<String> proj = new ArrayList<String>();
+		for (int i = 0; i < projection.size()-1; i++) {
+			String n_field = alias + projection.get(i);
+			proj.add(n_field); 
+			fieldsDataType.put(n_field, _fieldsDataType.get(projection.get(i)));
+		}
+		return new Schema(proj, fieldsDataType);
 	}
 
-	/**
-	 * Create a new schema as a join of two existing schemas. Keep all columns,
-	 * don't check for duplicates.
-	 * 
-	 * TODO: how do we distinguish which of relations comes first in the actual
-	 * ReduceSideJoin operators
-	 * 
-	 * 
-	 * TODO: how do we handle schemas after joining where doublicate fields
-	 * exist (e.g. NAME from nation and supplier):
-	 * 
-	 * [NATIONKEY, NAME, REGIONKEY, COMMENT, SUPPKEY , NAME, ADDRESS, NATIONKEY,
-	 * PHONE, ACCTBAL, COMMENT]
-	 * 
-	 * probably we wont need that soon, but just have in mind.
-	 */
+	/** Create a new schema as a join of two existing schemas */
 	public Schema join(Schema rhs) {
-		ArrayList<String> j = new ArrayList<String>(_schema.size() + rhs._schema.size());
-		j.addAll(_schema);
-		j.addAll(rhs._schema);
-		return new Schema(j);
+		ArrayList<String> joinFields = new ArrayList<String>(_schema.size() + rhs._schema.size());
+		joinFields.addAll(_schema);
+		joinFields.addAll(rhs._schema);
+		
+		HashMap<String, Integer> fieldsDataType = new HashMap<String, Integer>();
+		fieldsDataType.putAll(_fieldsDataType);
+		fieldsDataType.putAll(rhs._fieldsDataType);
+		
+		return new Schema(joinFields, fieldsDataType);
 	}
 
 	/** Get the index of a column by column name. */
 	public int getColumnIndex(String col) {
 		return _schema.indexOf(col);
 	}
-
+	
+	//==============================================
+	// THESE BELOW METHODS CURRENTLY ARE NOT USED
+	//==============================================
+	
 	/** Convenience function: get a sorted list of column indices. */
 	public List<Integer> getColumnIndices(List<String> colNames) {
 		ArrayList<Integer> result = new ArrayList<Integer>(colNames.size());
@@ -174,8 +220,6 @@ public class Schema {
 		return result;
 	}
 
-	private List<String> _schema;
-
 	public String toString() {
 		return "Schema: " + _schema.toString();
 	}
@@ -183,31 +227,22 @@ public class Schema {
 	// unit test
 	public static void main(String[] args) throws Exception {
 		List<String> names123 = Arrays.asList( "col1", "col2", "col3" );
-		List<String> names2 = Arrays.asList( "col2" );
 		List<String> names13 = Arrays.asList( "col1", "col3" );
-		List<String> names12313 = new ArrayList<String>(names123);
-		names12313.addAll(names13);
 
 		Schema schema = new Schema(names123);
 		Schema schema13 = new Schema(names13);
-
-		Text row = new Text("data1|data2|data3");
-		assert (schema.getValue(row, schema.getColumnIndex("col1")) == new Text("data1"));
-		assert (schema.getValue(row, schema.getColumnIndex("col3")) == new Text("data3"));
-
-		List<Integer> indices = schema.getColumnIndices(names2);
-		assert (schema.rowProjection(row, indices) == new Text("data2"));
-
-		List<String> names31 = names13;
-		Collections.reverse(names31);
-		indices = schema.getColumnIndices(names31);
-		assert (schema.rowProjection(row, indices) == new Text("data1|data3"));
-
-		assert (schema.projection(indices) == schema13);
-
-		assert (schema.join(schema13) == new Schema(names12313));
-
-		assert (schema.rowJoin(row, new Text("d1|d3")) == new Text("data1|data2|data3|d1|d3"));
+	
+		List<String> proj1 = Arrays.asList( "col1", "col2", "1_" );
+		List<String> proj2 = Arrays.asList( "col1", "" );
+		List<String> joinList = Arrays.asList( "1_col1", "1_col2", "col1" );
+		
+		Schema join = schema.projection(proj1).join(schema13.projection(proj2));
+		
+		for (int i = 0; i < joinList.size(); i++) {
+			System.out.println(join.getFields().get(i));
+			assert(join.getFields().get(i).equals(joinList.get(i)));
+		}
+		
 		System.out.println("All Tests OK");
 	}
 }
