@@ -23,7 +23,10 @@ public class dbq7 extends Configured implements Tool {
   /** input relations */
   static Relation relSupplier, relNations, relLineItem, relCustomer, relOrder;
 
-  /** intermediate result relations */
+  /**
+   * intermediate result relations: must be global because their schema is
+   * initiated then join is specified
+   */
   static Relation relImdN1Supplier, relImdN1SupplierLineItem, relImdN2Customer,
       relImdN2CustomerOrders, relImdJoinResult;
 
@@ -156,7 +159,7 @@ public class dbq7 extends Configured implements Tool {
     relImdJoinResult = new Relation("ImdJoinResult");
 
     // Result file
-    relQueryResult = new Relation();
+    relQueryResult = new Relation("Result");
   }
 
   /** Nation1 |><| Supplier job configuration */
