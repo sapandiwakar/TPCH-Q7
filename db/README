@@ -7,5 +7,6 @@ $> mysql -u username -p < create_database.sql
 4- makes constraints (this is done after data is loaded to speed up loading)
 5- renames tables to use q7 as it is
 
-I am not sure whether dbgen always generates the same db but q7_output.txt 
-is the output of s=0.1, n1.name=GERMANY and n2.name=FRANCE
+q7_our_output: the result of our engine
+q7_output    : the result of mysql
+parameters   : s=0.01, n1.name=GERMANY and n2.name=FRANCE
