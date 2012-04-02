@@ -3,9 +3,9 @@ package relations;
 public class Relation {
 
 	/** default paths */
-	static String inputPath = "/team8/input001/";
-	static String tmpPath = "/team8/temp001/";
-	static String outputPath = "/team8/output001/";
+	static String inputPath = "";
+	static String tmpPath = "";
+	static String outputPath = "";
 
 	/** relation schema */
 	public Schema schema = null;
@@ -18,7 +18,6 @@ public class Relation {
 
 	/** constructor for input relations only -- schema is provided explicitly */
 	public Relation(Schema schema, String fileName) {
-		super();
 		this.schema = schema;
 		this.storageFileName = inputPath + fileName;
 		this.name = fileName;
@@ -29,7 +28,6 @@ public class Relation {
 	 * inside join
 	 */
 	public Relation(String fileName) {
-		super();
 		this.storageFileName = tmpPath + fileName;
 		this.name = fileName;
 	}

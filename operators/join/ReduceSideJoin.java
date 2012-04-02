@@ -29,7 +29,7 @@ public class ReduceSideJoin {
 	public static class OuterRelationMapper extends ReduceSideJoinAbstractMapper {
 		public void configure(JobConf conf) {
 			reduceOrder = "0";
-			joinCol = conf.getInt("OuterJoinColumn", 0);
+			joinCol = conf.getInt(HadoopJoin.PARAM_OUTER_JOIN_COL, 0);
 			
 			selectionFilter = new SelectionFilter(conf, HadoopJoin.PREFIX_JOIN_OUTER);
 			projectionFilter = new ProjectionFilter(conf, HadoopJoin.PREFIX_JOIN_OUTER);
@@ -40,7 +40,7 @@ public class ReduceSideJoin {
 	public static class InnerRelationMapper extends ReduceSideJoinAbstractMapper {
 		public void configure(JobConf conf) {
 			reduceOrder = "1";
-			joinCol = conf.getInt("InnerJoinColumn", 0);
+			joinCol = conf.getInt(HadoopJoin.PARAM_INNER_JOIN_COL, 0);
 
 			selectionFilter = new SelectionFilter(conf, HadoopJoin.PREFIX_JOIN_INNER);
 			projectionFilter = new ProjectionFilter(conf, HadoopJoin.PREFIX_JOIN_INNER);
@@ -148,8 +148,8 @@ public class ReduceSideJoin {
 		}
 
 		// Set ReduceSideJoin columns
-		conf_.setInt("OuterJoinColumn", outer.schema.getColumnIndex(outerJoinCol));
-		conf_.setInt("InnerJoinColumn", inner.schema.getColumnIndex(innerJoinCol));
+		conf_.setInt(HadoopJoin.PARAM_OUTER_JOIN_COL, outer.schema.getColumnIndex(outerJoinCol));
+		conf_.setInt(HadoopJoin.PARAM_INNER_JOIN_COL, inner.schema.getColumnIndex(innerJoinCol));
 
 		JobConf conf = new JobConf(conf_);
 		conf.setJobName("R_" + outer.name + "|><|" + inner.name);
@@ -185,13 +185,13 @@ public class ReduceSideJoin {
 		conf.setOutputFormat(TextOutputFormat.class);
 		conf.setOutputKeyClass(NullWritable.class);
 		conf.setOutputValueClass(Text.class);
-
+		
 		return conf;
 	}
 
 	/** Convenience method to made definitions shorter: Natural join */
-	public static JobConf createJob(Configuration conf, Relation larger, Relation smaller,
+	public static JobConf createJob(Configuration conf, Relation outer, Relation inner,
 			String naturalJoinCol, Relation outRelation) throws IOException {
-		return createJob(conf, larger, naturalJoinCol, smaller, naturalJoinCol, outRelation);
+		return createJob(conf, outer, naturalJoinCol, inner, naturalJoinCol, outRelation);
 	}
 }

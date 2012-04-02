@@ -56,35 +56,38 @@ public class MemoryBackedJoin {
 				FileStatus[] files = fs.listStatus(outerFilePath);
 				
 				for (FileStatus file : files) {
-					BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(file.getPath())));
-
-					String line = null;
-					while((line = br.readLine()) != null) {				
-						String tuple[] = line.split(Schema.COLUMN_SEPARATOR_RE);
-
-						// selection
-						if (!selectionFilter.checkSelection(tuple))
-							continue;
-
-						// projection
-						tuple = projectionFilter.projection(tuple, joinCol);
-
-						StringBuffer attrs = new StringBuffer();
-						for (int i = 1; i < tuple.length; i++) {
-							attrs.append(tuple[i] + Schema.COLUMN_SEPARATOR);
-						}
-
-						if (attrs.length() > 0) {
-							attrs.deleteCharAt(attrs.length() - 1);
-						}
+					if (!file.isDir()) {
+						BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(file.getPath())));
 						
-						// insert into Hashtable
-						if(outerHashMap.containsKey(tuple[0])) {
-							outerHashMap.get(tuple[0]).add(attrs.toString());
-						} else {
-							List<String> values = new ArrayList<String>();
-							values.add(attrs.toString());
-							outerHashMap.put(tuple[0], values);
+						String line = null;
+						while((line = br.readLine()) != null) {				
+							String tuple[] = line.split(Schema.COLUMN_SEPARATOR_RE);
+	
+							// selection
+							if (!selectionFilter.checkSelection(tuple))
+								continue;
+
+							// projection
+							tuple = projectionFilter.projection(tuple, joinCol);
+
+							StringBuffer attrs = new StringBuffer();
+							for (int i = 1; i < tuple.length; i++) {
+								attrs.append(tuple[i] + Schema.COLUMN_SEPARATOR);
+							}
+
+							if (attrs.length() > 0) {
+								attrs.deleteCharAt(attrs.length() - 1);
+							}
+
+							// insert into Hashtable
+							if(outerHashMap.containsKey(tuple[0])) {
+								outerHashMap.get(tuple[0]).add(attrs.toString());
+							} else {
+								List<String> values = new ArrayList<String>();
+								values.add(attrs.toString());
+								outerHashMap.put(tuple[0], values);
+							}
+							
 						}
 					}
 				}
@@ -150,7 +153,7 @@ public class MemoryBackedJoin {
 			conf_.set("fs.default.name", "file://///");
 		}
 
-		// Set ReduceSideJoin columns
+		// Set join columns
 		conf_.setInt(HadoopJoin.PARAM_OUTER_JOIN_COL, 
 				outer.schema.getColumnIndex(outerJoinCol));
 		conf_.setInt(HadoopJoin.PARAM_INNER_JOIN_COL, 
@@ -189,8 +192,8 @@ public class MemoryBackedJoin {
 	}
 
 	/** Convenience method to made definitions shorter: Natural join */
-	public static JobConf createJob(Configuration conf, Relation larger, Relation smaller,
+	public static JobConf createJob(Configuration conf, Relation outer, Relation inner,
 			String naturalJoinCol, Relation outRelation) throws IOException {
-		return createJob(conf, larger, naturalJoinCol, smaller, naturalJoinCol, outRelation);
+		return createJob(conf, outer, naturalJoinCol, inner, naturalJoinCol, outRelation);
 	}
 }

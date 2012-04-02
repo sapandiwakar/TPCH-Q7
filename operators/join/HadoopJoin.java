@@ -26,7 +26,7 @@ public class HadoopJoin {
 	public static final String PARAM_INNER_JOIN_COL = "inner_join_col";
 	
 	/** maximum size of smaller relation for memory backed join */
-	protected static long MemoryBackedThreshold = 20000000;
+	protected static long MemoryBackedThreshold = 16*1024*1024;
 	
 	public static JobConf join(Relation r, Relation s, Relation output,
 			List<SelectionEntry<String>> rFilters,
@@ -36,9 +36,9 @@ public class HadoopJoin {
 			String joinKey,
 			boolean forceReduceSideJoin) throws IOException{
 		
-		Configuration job_conf = new Configuration();
+		Configuration conf = new Configuration();
 
-		FileSystem fs = FileSystem.get(job_conf);
+		FileSystem fs = FileSystem.get(conf);
 		
 		// Compute relations size
 		long rSize = 0;
@@ -57,6 +57,7 @@ public class HadoopJoin {
 	
 		// Swap to make sure r:smaller, s:larger
 		if (rSize > sSize) {
+			long tmpSize=rSize;rSize=sSize;sSize=tmpSize; 
 			Relation tmpRel = r;r = s;	s = tmpRel;
 			List<String> tmpProj = rProjection; rProjection = sProjection; sProjection = tmpProj;
 			List<SelectionEntry<String>> tmpSel = rFilters; rFilters = sFilters; sFilters = tmpSel;
@@ -70,30 +71,34 @@ public class HadoopJoin {
 				output.schema.getFields().toString());
 		
 		// Configuring
-		job_conf = SelectionFilter.addSelectionsToJob(job_conf,
+		conf = SelectionFilter.addSelectionsToJob(conf,
 				PREFIX_JOIN_OUTER, rFilters, r.schema);
 
-		job_conf = SelectionFilter.addSelectionsToJob(job_conf,
+		conf = SelectionFilter.addSelectionsToJob(conf,
 				PREFIX_JOIN_INNER, sFilters, s.schema);
 		
-		job_conf = ProjectionFilter.addProjectionsToJob(job_conf, 
+		conf = ProjectionFilter.addProjectionsToJob(conf, 
 				PREFIX_JOIN_OUTER, rProjection, r.schema);
 
-		job_conf = ProjectionFilter.addProjectionsToJob(job_conf, 
+		conf = ProjectionFilter.addProjectionsToJob(conf, 
 				PREFIX_JOIN_INNER, sProjection, s.schema);
 		
 		// DEBUG
 		//JobClient.runJob(MemoryBackedJoin.createJob(job_conf, 
 		//r, s, joinKey, output));
 		
+		JobConf jobConf;
+		
 		// join configuration
 		if (forceReduceSideJoin || rSize > MemoryBackedThreshold) {
 			System.out.println("ReduceSideJoin");
-			return ReduceSideJoin.createJob(job_conf, r, s, joinKey, output);
+			jobConf = ReduceSideJoin.createJob(conf, r, s, joinKey, output);
 		} else {
 			System.out.println("MemoryBackedJoin");
-			return MemoryBackedJoin.createJob(job_conf, r, s, joinKey, output);
-		} 
+			jobConf = MemoryBackedJoin.createJob(conf, r, s, joinKey, output);
+		}
+		
+		return jobConf;
 	}
 
 	public static long getMemoryBackedThreshold() {
